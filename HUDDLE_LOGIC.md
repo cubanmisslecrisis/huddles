@@ -28,6 +28,35 @@ The server is SpacetimeDB reducers operating over shared `presence`, `huddle`, `
 
 ---
 
+## Proof-of-Hangout reframe (Phase 2)
+
+> 🧭 The rules below (Phase 1) are **unchanged** — they still form huddles. Phase 2 only
+> *reinterprets* their outputs for the "Proof of Hangout" social map. No state-machine
+> changes are required to start; the new data lives in additive tables.
+
+- **An ended huddle is a hangout session — durable proof.** When a huddle reaches `ended`,
+  its row + `huddle_member` rows are the permanent record of a hangout: **where** (the
+  huddle centroid `lat`/`lng`, optionally a named place), **when** (`candidateStartedAt` →
+  `endedAt`), **who** (members), and **how long** (per member `joinedAt` → `leftAt`). The
+  **Wrapped** retrospective is a query over a user's ended huddles + memberships. Don't
+  garbage-collect ended huddles — they're the history.
+- **Warmth = activity intensity (heatmap).** Phase-1 `huddle.warmth` (and the
+  warmth-per-tick) is reinterpreted as *how much social activity happened here*. Phase 2
+  aggregates this per **map cell** (geohash/grid) into a `heat_cell` weight that the Mapbox
+  heatmap renders. Decay still applies so the heatmap reflects *recent* activity.
+- **Exploration.** Each fresh location fix marks a `visited_cell` for that user; the count of
+  distinct cells → a "city explored %". Independent of huddles (you explore alone too).
+- **Recommendations.** A separate, opinion layer: a user marks a place
+  **recommend / don't-recommend** (`sentiment`), optionally with a note. Not derived from
+  proximity; it's explicit user input, overlaid on the map/heatmap.
+- **Avatar merging** is just a huddle cluster: co-located members (one `huddle` row) render
+  as a single merged avatar on the client — already what clustering produces.
+
+New event types for the feed: `place_recommended` (and optionally `hangout_logged` when a
+huddle ends, to surface the proof in the feed).
+
+---
+
 ## Core Concept
 
 A **huddle** is created when two or more users stay together in the same place long enough.

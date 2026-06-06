@@ -12,7 +12,38 @@
 
 ---
 
-## Product Summary
+## North Star v2 — Proof of Hangout (social map)
+
+> 🧭 **Current product direction.** The sections below describe **Phase 1 (the shipped
+> territorial-huddle MVP)**. The team's north star is now **"Proof of Hangout"** — a
+> Zenly/Snap-Map-inspired **social map**, built *additively* on the Phase-1 engine.
+
+The map is the app. Inspired by Zenly and Snap Map, Huddles becomes a live social map that
+quietly records *who you hung out with, where, when, and for how long* — a
+Spotify-Wrapped-on-a-smaller-scale view of your real-world social life.
+
+- **Live social map (Mapbox), home screen.** Room-mates appear as avatars at their live
+  location; when people are close they **merge** into one avatar (Snap Map behavior). This
+  is exactly a Phase-1 **huddle** (a proximity cluster) — so merging is already modeled.
+- **Activity heatmap.** A Snap-Map-style heatmap of overall activity across the map. This
+  reinterprets Phase-1 **warmth** as *activity intensity* accumulated per map cell.
+- **City exploration.** "How much of the city have you explored?" — distinct places/cells a
+  user has visited, shown as an explored-% and unlocked areas.
+- **Recommend layer.** Users tag places **recommend / don't-recommend**; a toggleable
+  overlay paints the map and heatmap with crowd sentiment.
+- **Proof of Hangout / Wrapped.** A retrospective of your hangouts — partners, places,
+  times, durations — built from **completed huddle sessions** (an ended huddle is durable
+  proof of a hangout) plus per-place dwell.
+
+Why it reuses Phase 1: a huddle already *is* a hangout session (`huddle` = where + when, its
+centroid = the place; `huddle_member.joinedAt`/`leftAt` = who + how long). So Phase 2 is new
+**presentation + feature layers** (Mapbox, heatmap, exploration, recommendations, Wrapped),
+not a rewrite of the engine. Still **room-scoped** for now; a global map + friend graph is a
+later step. See `TECHNICAL_PLAN.md` "Proof-of-Hangout / Social-Map roadmap" for the build.
+
+---
+
+## Product Summary  *(Phase 1 — shipped MVP)*
 
 Huddles turns physical proximity into a shared social world state.
 
@@ -209,6 +240,10 @@ These can come later.
 
 ## Future Product Directions
 
+> Several of these are now the **active Phase-2 direction** (see "North Star v2" above):
+> social heatmaps, named/social places, recap cards → the **Wrapped** retrospective, and
+> place recommendations. Friend groups + a global (non-room) map remain genuinely future.
+
 After the hackathon MVP, Huddles could expand into:
 
 - real GPS proximity
@@ -233,4 +268,7 @@ The product should answer:
 
 > “Where did my friends actually spend time together?”
 
-The core magic is not the map. It is the feeling that real-world social presence became visible, playful, and shared.
+The core magic is the feeling that real-world social presence became visible, playful, and
+shared. In the Phase-2 north star, the **map carries that feeling** — a living heatmap of
+where people hang out, and a personal **proof of hangout**: who you spent time with, where,
+when, and for how long.

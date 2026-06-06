@@ -1,67 +1,54 @@
-# SpacetimeDB TypeScript Quickstart Chat
+# Huddles
 
-This is a simple chat application that demonstrates how to use SpacetimeDB with TypeScript and React. The chat application is a simple chat room where users can send messages to each other. The chat application uses SpacetimeDB to store the chat messages.
+**Huddles turns physical proximity into a shared social world state.** Users join a room and
+**stream their live GPS location**; when 2+ people are within `PROXIMITY_RADIUS_METERS` of
+each other, the *server* (a SpacetimeDB module) forms a **huddle** — warming the spot and
+scoring its members — all rendered live on a map. The client only reports "here is my
+location"; SpacetimeDB owns the world state.
 
-It is based directly on the plain React + TypeScript + Vite template. You can follow the quickstart guide for how creating this project from scratch at [SpacetimeDB TypeScript Quickstart](https://spacetimedb.com/docs/sdks/typescript/quickstart).
+- **Phase 1 (shipped):** the territorial-huddle MVP — live GPS → haversine proximity
+  clustering → `candidate → active → cooling → ended` state machine, warmth + scoring, on a
+  react-leaflet map. Live on `huddles-5eq44`.
+- **Phase 2 (north star): "Proof of Hangout"** — a Zenly/Snap-Map-style social map (Mapbox)
+  with an activity **heatmap**, **city exploration %**, **avatar merging**, a
+  **recommend/avoid** layer, and a **Wrapped-style retrospective** of who you hung out with,
+  where, when, and for how long. Additive — reuses the Phase-1 engine (an ended huddle *is* a
+  hangout session).
 
-You can follow the instructions for creating your own SpacetimeDB module here: [SpacetimeDB Rust Module Quickstart](https://spacetimedb.com/docs/modules/rust/quickstart). Place the module in the `quickstart-chat/server` directory for compability with this project.
+## Stack
 
-In order to run this example, you need to:
+- **Module:** SpacetimeDB TypeScript module — `spacetimedb/src/index.ts` (tables, reducers,
+  scheduled ticks, lifecycle).
+- **Client:** React 18 + Vite — `src/` (`App.tsx`, `LiveMap.tsx`); generated bindings in
+  `src/module_bindings/` (never hand-edited).
+- **Server:** maincloud, database `huddles-5eq44`.
 
-- `pnpm build` in the root directory (`spacetimedb-typescriptsdk`)
-- `pnpm install` in this directory
-- `pnpm build` in this directory
-- `pnpm dev` in this directory to run the example
+## Run it
 
-Below is copied from the original template README:
-
-# React + TypeScript + Vite
-
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
-
-- Configure the top-level `parserOptions` property like this:
-
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-});
+```bash
+npm install
+npm run dev            # Vite dev server (client)
 ```
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+Module workflow (after editing `spacetimedb/src/index.ts`):
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react';
-
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-});
+```bash
+npm run spacetime:generate    # regenerate src/module_bindings/ to match the schema
+spacetime publish huddles-5eq44 --module-path spacetimedb --server maincloud   # add --delete-data for breaking schema changes
+npm run build                 # tsc -b && vite build
 ```
+
+Connection is configured in `src/main.tsx` via `VITE_SPACETIMEDB_HOST` /
+`VITE_SPACETIMEDB_DB_NAME` (`.env.local`), defaulting to maincloud + `huddles-5eq44`. The
+Phase-2 map will read a Mapbox token from `VITE_MAPBOX_TOKEN`.
+
+## Docs (read these first)
+
+- **[PROJECT.md](./PROJECT.md)** — product context + the "Proof of Hangout" north star.
+- **[HUDDLE_LOGIC.md](./HUDDLE_LOGIC.md)** — game rules + the huddle state machine.
+- **[TECHNICAL_PLAN.md](./TECHNICAL_PLAN.md)** — architecture, tables, reducers, and the
+  Proof-of-Hangout / Social-Map roadmap.
+- **[PROGRESS.md](./PROGRESS.md)** — build status (what's shipped vs. planned).
+- **[WORK_SPLIT.md](./WORK_SPLIT.md)** — how the work is divided for parallel building.
+- **[CLAUDE.md](./CLAUDE.md)** — conventions + SpacetimeDB reference (kept identical to
+  `AGENTS.md`).

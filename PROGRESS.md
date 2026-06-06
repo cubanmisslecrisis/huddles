@@ -4,6 +4,15 @@ Status tracker for the build. Legend: ✅ done · 🟡 partial · ⬜ not starte
 Model: **live GPS location on a map** (not tap-to-move zones — see the MODEL UPDATE
 banners in `PROJECT.md` / `HUDDLE_LOGIC.md` / `TECHNICAL_PLAN.md`).
 
+> **Phases.** **Phase 1 — the territorial huddle MVP — is shipped** (everything in
+> "Done ✅" below). **Phase 2 north star = "Proof of Hangout"**, a Zenly/Snapmap-style
+> social map: a Mapbox map with an activity heatmap, city exploration, avatar merging, a
+> recommend/avoid layer, and a Wrapped-style "who you hung out with, where, when, how long"
+> retrospective. Phase 2 is **additive and reuses the Phase-1 engine** (an ended huddle is
+> already a hangout session; "warmth" becomes heatmap activity intensity). See the new
+> "Next phase — Proof of Hangout (planned)" section below, and `PROJECT.md` /
+> `TECHNICAL_PLAN.md` for the product + technical detail.
+
 > **Big picture.** Backend pivoted to **real-time GPS + radius proximity** and is live on
 > `huddles-5eq44`: `presence` holds `lat`/`lng`/`has_fix`; movement is
 > `heartbeatLocation(lat,lng)`; proximity is haversine `≤ PROXIMITY_RADIUS_METERS` (100 m
@@ -80,6 +89,34 @@ banners in `PROJECT.md` / `HUDDLE_LOGIC.md` / `TECHNICAL_PLAN.md`).
   CLI + the live browser client (forming → activated → cooling → ended cycles in the feed).
 - ⬜ Purge remaining zone/tap-to-move prose from the spec docs (banners cover it for now);
   update README (still says "quickstart-chat").
+
+---
+
+## Next phase — Proof of Hangout (planned) 🧭
+
+Phase 2 north star (see `PROJECT.md` "North Star v2" and `TECHNICAL_PLAN.md`
+"Proof-of-Hangout / Social-Map roadmap"). Room-scoped for now (global map + friend graph
+is a later step). Reuses the Phase-1 proximity engine.
+
+### Backend (`spacetimedb/src/index.ts`)
+- ⬜ `heat_cell(roomId, cellKey, weight, lastUpdatedAt)` — geohash/grid activity
+  accumulation for the heatmap; bumped on `heartbeatLocation` / warmth tick.
+- ⬜ `visited_cell(identity, roomId, cellKey, firstSeenAt, lastSeenAt, count)` — drives the
+  "city explored %" metric.
+- ⬜ `recommendation(identity, roomId, lat, lng, placeLabel, sentiment, note, createdAt)`
+  + `recommendPlace(...)` reducer; emit `place_recommended` events.
+- ⬜ Hangout history = existing **ended `huddle` + `huddle_member`** (no new table); add a
+  `wrapped` view/query (per-user: partners, places, durations).
+- ⬜ Extend `heartbeatLocation` to bump `heat_cell` + `visited_cell`.
+
+### Frontend (`src/`)
+- ⬜ Migrate the map react-leaflet → **Mapbox GL** (`mapbox-gl` + `react-map-gl`,
+  `VITE_MAPBOX_TOKEN`); map becomes the central/home surface.
+- ⬜ **Heatmap layer** from `heat_cell`; **recommend/avoid overlay** (toggle).
+- ⬜ **Avatar merging** — render co-located members (a `huddle` cluster) as one merged
+  avatar (Snapmap behavior); reuse existing huddle rows.
+- ⬜ **Wrapped / retrospective screen** — who/where/when/how-long from ended huddles.
+- ⬜ Recommend action UI → `recommendPlace`.
 
 ---
 

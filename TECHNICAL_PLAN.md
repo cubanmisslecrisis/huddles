@@ -41,6 +41,40 @@ Tables in `spacetimedb/src/index.ts` (all `public`, snake_case names, identity-k
   `distanceMeters(...)` to (lat,lng) is `≤ PROXIMITY_RADIUS_METERS`. Reused by `pingNearby`
   and the Part 2 engine, which **clusters** fresh users into huddles.
 
+## Proof-of-Hangout / Social-Map roadmap (Phase 2 — planned)
+
+> 🧭 Phase-2 north star (`PROJECT.md` "North Star v2"): a Mapbox social map + heatmap +
+> exploration + recommendations + a Wrapped retrospective. **Additive** — reuses the live-GPS
+> engine above. Room-scoped for now (global map + friend graph is a later step). Constants
+> stay in the one module-level block; new tables are `public` + snake_case like the rest.
+
+### New / changed backend (`spacetimedb/src/index.ts`)
+- **`heat_cell`** — `room_id` (index), `cell_key` (string geohash/grid id), `weight` f64,
+  `last_updated_at`; unique/index on `(room_id, cell_key)`. Bumped on `heartbeatLocation`
+  and/or the warmth tick; decayed by `decayHuddles` (or a new `decayHeat`). Source for the
+  Mapbox heatmap. Pick a fixed grid (e.g. ~5–7 char geohash) so cell math is deterministic.
+- **`visited_cell`** — `id` pk, `identity`, `room_id`, `cell_key`, `first_seen_at`,
+  `last_seen_at`, `count`; index `(room_id, identity)`. Bumped on each fix → "city explored %"
+  = distinct cells / target.
+- **`recommendation`** — `id` pk, `identity`, `room_id` (index), `lat`, `lng`,
+  `place_label`, `sentiment` (`recommend`|`avoid`), `note`, `created_at`.
+- **Hangout history** = existing **ended `huddle` + `huddle_member`** (no new table). Add a
+  `wrapped` per-user view/query: their ended huddles → partners (co-members), places
+  (centroids), times, and durations (`left_at − joined_at`).
+- **Reducers:** `recommendPlace(lat, lng, placeLabel, sentiment, note)` → insert
+  `recommendation`, emit `place_recommended`. Extend `heartbeatLocation` to bump `heat_cell`
+  + `visited_cell` (deterministic `cellKey(lat,lng)` helper). Optional `wrapped` view.
+
+### Frontend (`src/`)
+- **Map migration:** react-leaflet → **Mapbox GL** (`mapbox-gl` + `react-map-gl`); token via
+  `VITE_MAPBOX_TOKEN` (add to `.env.local`). The map becomes the central/home surface;
+  retire `LiveMap.tsx`'s leaflet usage (keep the marker/merge logic conceptually).
+- **Layers:** (1) **heatmap** from `heat_cell` (Mapbox `heatmap` layer, weight = cell weight);
+  (2) **avatars** symbol layer — co-located members of one `huddle` render as a single
+  **merged** avatar; (3) **recommend/avoid overlay** (toggle) from `recommendation`.
+- **Screens:** Map (home) · **Wrapped/retrospective** (who/where/when/how-long from ended
+  huddles) · a **Recommend** action → `recommendPlace` · an explored-% indicator.
+
 ## Goal
 
 Build a hackathon-ready realtime app where users move around shared zones, form huddles, warm zones, and see the shared world update live.

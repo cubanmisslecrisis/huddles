@@ -2,6 +2,8 @@
 
 **Huddles turns physical proximity into a shared social world state.** Users join a room and **stream their live GPS location** (`heartbeatLocation(lat,lng)`); when 2+ users are within `PROXIMITY_RADIUS_METERS` of each other, the *server* forms a huddle that warms and scores its members, shown on a **live map**. The client only reports "here is my location" — SpacetimeDB owns all huddle logic. (Earlier drafts used tap-to-move fake zones; that's been replaced by live location — see the MODEL UPDATE banners in the spec docs.)
 
+**Phase 2 north star — "Proof of Hangout."** The team is building (additively) toward a Zenly/Snap-Map-style **social map**: a Mapbox map with an activity **heatmap**, **city exploration %**, **avatar merging** when people are close, a **recommend/avoid** layer, and a **Wrapped-style retrospective** of who you hung out with, where, when, and for how long. It reuses the Phase-1 engine (an ended `huddle` is already a hangout session; "warmth" → heatmap activity intensity). Phase 1 (territorial huddle MVP) is shipped; see `PROJECT.md` "North Star v2", `TECHNICAL_PLAN.md` "Proof-of-Hangout / Social-Map roadmap", and `PROGRESS.md`.
+
 ## Spec Docs — read these first
 
 - **[PROJECT.md](./PROJECT.md)** — product context: what Huddles is, the feel, MVP scope, demo experience, non-goals.
@@ -32,6 +34,7 @@ So the client and the live module already diverge today, and both diverge from t
 - **Reducers don't return data.** Clients read via subscriptions (`useTable`) and row callbacks. The client reports movement and renders state — it never creates or mutates huddles.
 - **Regenerate bindings after any schema change:** `npm run spacetime:generate` (writes `src/module_bindings/` — never hand-edit those files).
 - **Keep tunable constants** (dwell/cooling/warmth thresholds from `HUDDLE_LOGIC.md`) in one module-level block so demo↔production tuning is a single edit.
+- **Map = Mapbox GL (Phase 2).** The map/heatmap is the central surface; use Mapbox GL (`mapbox-gl` + `react-map-gl`) with the access token in `VITE_MAPBOX_TOKEN` (`.env.local`, never hard-coded). Phase 1 shipped on react-leaflet (`src/LiveMap.tsx`); the migration is tracked in `PROGRESS.md`.
 - **Local dev:** `npm run dev` (Vite). Publish: `npm run spacetime:publish` (maincloud) / `:publish:local`. The reference below covers full CLI/SDK usage.
 
 ## Keep the context docs current

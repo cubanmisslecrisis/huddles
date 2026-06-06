@@ -125,3 +125,31 @@ fully independent of Part 1's reducers working.
 
 If a third person takes UI, this becomes the 3-way split; with two backend people, Parts
 1 and 2 above are the division.
+
+---
+
+## Phase 2 — Proof of Hangout (social map) split
+
+> 🧭 **Phase 1 (Parts 1 & 2) is shipped and verified on `huddles-5eq44`.** Phase 2 is the
+> "Proof of Hangout" north star (`PROJECT.md` "North Star v2", `TECHNICAL_PLAN.md`
+> "Proof-of-Hangout / Social-Map roadmap"). It's **additive** — reuses the live-GPS engine;
+> an ended `huddle` is already a hangout session. Room-scoped for now.
+>
+> The seam stays the same: Part 3 (UI) reads tables and renders; Part 4 (backend) writes the
+> new tables off the existing engine + `heartbeatLocation`.
+
+**Part 3 — Map & client (Mapbox).** Owns `src/` map UI.
+- Migrate the map react-leaflet → **Mapbox GL** (`mapbox-gl` + `react-map-gl`,
+  `VITE_MAPBOX_TOKEN`); map is the home surface.
+- **Heatmap** layer from `heat_cell`; **avatar merging** (a `huddle` cluster → one avatar);
+  **recommend/avoid overlay** (toggle); **Wrapped/retrospective** screen; explored-%; the
+  Recommend action → `recommendPlace`.
+
+**Part 4 — Hangout/heatmap backend.** Owns the new tables in `index.ts`.
+- `heat_cell` (+ decay), `visited_cell` (exploration), `recommendation` + `recommendPlace`.
+- Extend `heartbeatLocation` to bump `heat_cell` + `visited_cell` (deterministic
+  `cellKey(lat,lng)`); add a `wrapped` view/query over ended `huddle` + `huddle_member`.
+- Does **not** touch the Phase-1 state machine; reads its outputs (ended huddles).
+
+**Seam:** the new tables (`heat_cell` / `visited_cell` / `recommendation`) + ended-huddle
+history. Part 4 writes them; Part 3 renders them.
