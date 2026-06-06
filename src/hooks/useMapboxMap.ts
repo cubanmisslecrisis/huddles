@@ -47,6 +47,7 @@ export function useMapboxMap({
   const [mapReady, setMapReady] = useState(false);
   const [tokenMissing, setTokenMissing] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [heatmapPulse, setHeatmapPulse] = useState(0);
 
   const markerKeys = markerDefs.map((d) => d.key).join('\0');
 
@@ -63,6 +64,23 @@ export function useMapboxMap({
     setMounted(true);
   }, []);
 
+  // Pulsing animation for heatmap
+  useEffect(() => {
+    let animationFrameId: number;
+    let startTime = Date.now();
+
+    const animate = () => {
+      const elapsed = (Date.now() - startTime) % 3000;
+      const progress = elapsed / 3000;
+      const pulse = 0.5 + Math.sin(progress * Math.PI * 2) * 0.35;
+      setHeatmapPulse(pulse);
+      animationFrameId = requestAnimationFrame(animate);
+    };
+
+    animationFrameId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, []);
+
   // Create the map once.
   useEffect(() => {
     if (!TOKEN) {
@@ -77,8 +95,8 @@ export function useMapboxMap({
       style: 'mapbox://styles/mapbox/standard',
       center: FALLBACK,
       zoom: 12,
-      pitch: 60,
-      bearing: -20,
+      pitch: 0,
+      bearing: 0,
       antialias: true,
       attributionControl: false,
     });
@@ -129,20 +147,22 @@ export function useMapboxMap({
               ['linear'],
               ['heatmap-density'],
               0,
-              'rgba(250, 137, 39, 0)',
-              0.15,
-              'rgba(255, 210, 160, 0.45)',
-              0.35,
-              'rgba(255, 170, 90, 0.65)',
-              0.55,
-              'rgba(250, 137, 39, 0.8)',
-              0.75,
-              'rgba(235, 95, 25, 0.9)',
+              'rgba(10, 0, 21, 0)',
+              0.1,
+              'rgba(61, 0, 102, 0.3)',
+              0.25,
+              'rgba(136, 0, 255, 0.5)',
+              0.4,
+              'rgba(255, 0, 255, 0.65)',
+              0.6,
+              'rgba(255, 51, 102, 0.8)',
+              0.8,
+              'rgba(255, 170, 0, 0.9)',
               1,
-              'rgba(200, 55, 10, 1)',
+              'rgba(255, 255, 0, 1)',
             ],
             'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 11, 18, 15, 45, 17, 70],
-            'heatmap-opacity': warmthEnabled ? 0.85 : 0,
+            'heatmap-opacity': warmthEnabled ? heatmapPulse : 0,
           },
         });
       } else {
@@ -152,7 +172,7 @@ export function useMapboxMap({
 
     if (map.isStyleLoaded()) apply();
     else map.once('idle', apply);
-  }, [mapReady, heat, warmthEnabled]);
+  }, [mapReady, heat, warmthEnabled, heatmapPulse]);
 
   // Sync mapbox markers to the current marker defs (add new, remove gone).
   useEffect(() => {
@@ -186,13 +206,13 @@ export function useMapboxMap({
     const map = mapRef.current;
     if (!map || !mapReady || !myLoc || recenteredRef.current) return;
     recenteredRef.current = true;
-    map.flyTo({ center: [myLoc.lng, myLoc.lat], zoom: DEFAULT_ZOOM, pitch: 60, bearing: -20, duration: 1200 });
+    map.flyTo({ center: [myLoc.lng, myLoc.lat], zoom: DEFAULT_ZOOM, pitch: 0, bearing: 0, duration: 1200 });
   }, [mapReady, myLoc]);
 
   const recenter = useCallback(() => {
     const map = mapRef.current;
     const c = myLoc ? ([myLoc.lng, myLoc.lat] as [number, number]) : FALLBACK;
-    map?.flyTo({ center: c, zoom: DEFAULT_ZOOM, pitch: 60, bearing: -20, duration: 900 });
+    map?.flyTo({ center: c, zoom: DEFAULT_ZOOM, pitch: 0, bearing: 0, duration: 900 });
   }, [myLoc]);
 
   const flyTo = useCallback((lat: number, lng: number) => {
