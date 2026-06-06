@@ -8,18 +8,41 @@ import {
   t as __t,
   type AlgebraicTypeType as __AlgebraicTypeType,
   type Infer as __Infer,
-} from 'spacetimedb';
+} from "spacetimedb";
 
-export const Message = __t.object('Message', {
-  sender: __t.identity(),
-  sent: __t.timestamp(),
-  text: __t.string(),
+export const Huddle = __t.object("Huddle", {
+  id: __t.u64(),
+  name: __t.string(),
+  createdBy: __t.identity(),
+  createdAt: __t.timestamp(),
+  lat: __t.f64(),
+  lng: __t.f64(),
+  placeLabel: __t.string(),
+  warmth: __t.f64(),
+  memberCount: __t.u32(),
+  active: __t.bool(),
 });
-export type Message = __Infer<typeof Message>;
+export type Huddle = __Infer<typeof Huddle>;
 
-export const User = __t.object('User', {
+export const HuddleMember = __t.object("HuddleMember", {
+  id: __t.u64(),
+  huddleId: __t.u64(),
+  identity: __t.identity(),
+  joinedAt: __t.timestamp(),
+});
+export type HuddleMember = __Infer<typeof HuddleMember>;
+
+export const Player = __t.object("Player", {
   identity: __t.identity(),
   name: __t.option(__t.string()),
+  penguinColor: __t.string(),
   online: __t.bool(),
 });
-export type User = __Infer<typeof User>;
+export type Player = __Infer<typeof Player>;
+
+export const WarmthTimer = __t.object("WarmthTimer", {
+  scheduledId: __t.u64(),
+  scheduledAt: __t.scheduleAt(),
+});
+export type WarmthTimer = __Infer<typeof WarmthTimer>;
+

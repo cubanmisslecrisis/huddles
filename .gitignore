@@ -14,3 +14,7 @@ spacetimedb/dist/
 *.log
 .vite/
 coverage/
+
+# test / preview artifacts
+.playwright-mcp/
+huddle-room.png

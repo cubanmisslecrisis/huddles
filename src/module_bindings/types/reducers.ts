@@ -3,11 +3,18 @@
 
 /* eslint-disable */
 /* tslint:disable */
-import { type Infer as __Infer } from 'spacetimedb';
+import { type Infer as __Infer } from "spacetimedb";
 
 // Import all reducer arg schemas
-import SendMessageReducer from '../send_message_reducer';
-import SetNameReducer from '../set_name_reducer';
+import CreateHuddleReducer from "../create_huddle_reducer";
+import EndHuddleReducer from "../end_huddle_reducer";
+import JoinHuddleReducer from "../join_huddle_reducer";
+import LeaveHuddleReducer from "../leave_huddle_reducer";
+import SetProfileReducer from "../set_profile_reducer";
 
-export type SendMessageParams = __Infer<typeof SendMessageReducer>;
-export type SetNameParams = __Infer<typeof SetNameReducer>;
+export type CreateHuddleParams = __Infer<typeof CreateHuddleReducer>;
+export type EndHuddleParams = __Infer<typeof EndHuddleReducer>;
+export type JoinHuddleParams = __Infer<typeof JoinHuddleReducer>;
+export type LeaveHuddleParams = __Infer<typeof LeaveHuddleReducer>;
+export type SetProfileParams = __Infer<typeof SetProfileReducer>;
+
