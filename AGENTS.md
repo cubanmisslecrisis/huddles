@@ -1,3 +1,39 @@
+# Huddles
+
+**Huddles turns physical proximity into a shared social world state.** Users join a room and move between zones; when 2+ users stay together long enough, the *server* forms a huddle that warms the zone and scores its members. The client only reports "I am here" — SpacetimeDB owns all huddle logic.
+
+## Spec Docs — read these first
+
+- **[PROJECT.md](./PROJECT.md)** — product context: what Huddles is, the feel, MVP scope, demo experience, non-goals.
+- **[HUDDLE_LOGIC.md](./HUDDLE_LOGIC.md)** — the game rules and `candidate → active → cooling → ended` state machine, constants, warmth/decay, pseudocode, acceptance criteria.
+- **[TECHNICAL_PLAN.md](./TECHNICAL_PLAN.md)** — architecture, tables, reducers, scheduling, subscriptions, screens, demo script, definition of done.
+
+When the docs and this file disagree on *mechanics*, the docs win; this section governs *how to write the code*.
+
+## Current state vs target
+
+The committed client (`src/App.tsx`, `src/HuddleMap.tsx`) and module (`spacetimedb/src/index.ts`) are a **starter that does not yet match the spec**:
+
+- `spacetimedb/src/index.ts` is still the SpacetimeDB **chat quickstart** (`user` + `message` tables) — this is what's published to `huddles-5eq44`.
+- The client / generated bindings (`src/module_bindings/`) are a **manual** "penguin huddle" app where the *user* taps "Start a huddle" — the opposite of the spec's emergent, server-decided model.
+
+So the client and the live module already diverge today, and both diverge from the target in the docs. Treat the docs as the destination; expect to rewrite both the module and the client to reach the zone-based proximity state machine. Don't assume existing tables/reducers match the spec.
+
+## Code Conventions
+
+- **Module lives in `spacetimedb/src/index.ts`** (one TypeScript file: tables, reducers, lifecycle, scheduled tables). Client is React + Vite in `src/`.
+- **Table `name` is snake_case** (`huddle_member`); the `ctx.db` accessor is the camelCase form (`ctx.db.huddleMember`). Make tables `public: true` only when the client must subscribe.
+- **Auth is always `ctx.sender`.** Key users/presence/members by Identity. Never accept a `user_id`/identity as a reducer argument and trust it.
+- **Determinism.** Time is `ctx.timestamp`; randomness is `ctx.random`. No wall-clock, `Date.now()`, `Math.random()`, network, or filesystem in reducers.
+- **Time-based logic uses scheduled reducers**, not client-driven `tick()` calls. Schedule `updateHuddles` / `expireStalePresence` / `decayZones` from `init` via scheduled tables. Movement reducers may also call the state machine inline for instant feedback, but correctness must not depend on a client tick.
+- **Index hot lookups.** "Live huddle for a zone" and "fresh users in a zone" should hit a btree index (e.g. multi-column `(room_id, zone_id)`), not a full scan.
+- **Reducers don't return data.** Clients read via subscriptions (`useTable`) and row callbacks. The client reports movement and renders state — it never creates or mutates huddles.
+- **Regenerate bindings after any schema change:** `npm run spacetime:generate` (writes `src/module_bindings/` — never hand-edit those files).
+- **Keep tunable constants** (dwell/cooling/warmth thresholds from `HUDDLE_LOGIC.md`) in one module-level block so demo↔production tuning is a single edit.
+- **Local dev:** `npm run dev` (Vite). Publish: `npm run spacetime:publish` (maincloud) / `:publish:local`. The reference below covers full CLI/SDK usage.
+
+---
+
 # SpacetimeDB Core Concepts
 
 SpacetimeDB is a relational database that is also a server. It lets you upload application logic directly into the database via WebAssembly modules, eliminating the traditional web/game server layer entirely.
