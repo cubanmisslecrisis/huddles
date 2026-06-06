@@ -655,3 +655,33 @@ section p {
 .lobby > div:not(.tabbar):not(.lobby-head) {
   padding-bottom: max(12px, env(safe-area-inset-bottom));
 }
+
+/* ── Mapbox map + avatars (LiveMap.tsx) ── */
+.map { overflow: hidden; position: relative; }
+.map-empty {
+  display: grid; place-items: center; text-align: center; padding: 24px;
+  background: rgba(20, 30, 50, 0.85); color: #e6edf8;
+}
+.map-empty code {
+  background: rgba(0, 0, 0, 0.3); padding: 1px 5px; border-radius: 5px; font-size: 0.85em;
+}
+.avatar { display: flex; flex-direction: column; align-items: center; }
+.avatar-dot {
+  width: 34px; height: 34px; border-radius: 50%;
+  display: grid; place-items: center;
+  color: #06243f; font-weight: 800; font-size: 0.9rem;
+  border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.avatar.me .avatar-dot {
+  box-shadow: 0 0 0 4px rgba(107, 143, 255, 0.45), 0 0 16px rgba(107, 143, 255, 0.7);
+}
+.avatar.merged .avatar-dot {
+  width: 42px; height: 42px; font-size: 1.05rem; color: #fff;
+  border-color: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18), 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+.avatar-name {
+  margin-top: 3px; white-space: nowrap; font-size: 0.7rem; font-weight: 700; color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+  max-width: 120px; overflow: hidden; text-overflow: ellipsis;
+}

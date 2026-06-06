@@ -28,6 +28,17 @@ export const Event = __t.object("Event", {
 });
 export type Event = __Infer<typeof Event>;
 
+export const HeatCell = __t.object("HeatCell", {
+  id: __t.u64(),
+  roomId: __t.u64(),
+  cellKey: __t.string(),
+  lat: __t.f64(),
+  lng: __t.f64(),
+  weight: __t.f64(),
+  lastUpdatedAt: __t.timestamp(),
+});
+export type HeatCell = __Infer<typeof HeatCell>;
+
 export const Huddle = __t.object("Huddle", {
   id: __t.u64(),
   roomId: __t.u64(),

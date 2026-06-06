@@ -31,6 +31,12 @@ const POINTS_PER_TICK = 5;
 const DECAY_INTERVAL_SECONDS = 30;
 const DECAY_AMOUNT = 2;
 
+// Phase-2 activity heatmap: server-aggregated weight per ~grid cell.
+const HEAT_CELL_DEGREES = 0.002; // ~200 m grid cell (lat) for the heatmap
+const HEAT_PER_HEARTBEAT = 1; // weight added to a cell on each heartbeat
+const HEAT_DECAY_AMOUNT = 2; // weight removed per decay tick (30s)
+const HEAT_MAX = 100; // clamp so a single cell's weight stays bounded
+
 // Scheduled tick cadences, in microseconds.
 const HUDDLE_TICK_MICROS = 1_000_000n; // 1s — runs the huddle state machine
 const PRESENCE_TICK_MICROS = 5_000_000n; // 5s — expire stale presence
@@ -74,6 +80,26 @@ const presence = table(
     hasFix: t.bool(),
     lastSeen: t.timestamp(),
     status: t.string(),
+  }
+);
+
+// Phase-2 activity heatmap: one row per (room, ~200m grid cell), weight accumulated
+// by heartbeatLocation and decayed by decayHuddles. Rendered as the Mapbox heatmap.
+// lat/lng are the cell center (for rendering). Written by Part 1; read by the client.
+const heatCell = table(
+  {
+    name: 'heat_cell',
+    public: true,
+    indexes: [{ accessor: 'by_room_cell', algorithm: 'btree', columns: ['roomId', 'cellKey'] }],
+  },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    roomId: t.u64().index('btree'),
+    cellKey: t.string(),
+    lat: t.f64(),
+    lng: t.f64(),
+    weight: t.f64(),
+    lastUpdatedAt: t.timestamp(),
   }
 );
 
@@ -170,6 +196,7 @@ const spacetimedb = schema({
   user,
   room,
   presence,
+  heatCell,
   // Part 2
   huddle,
   huddleMember,
@@ -205,6 +232,40 @@ function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number):
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// Deterministic ~200m grid cell for the activity heatmap. Math-only → reducer-safe.
+function heatCellKey(lat: number, lng: number): string {
+  return `${Math.floor(lat / HEAT_CELL_DEGREES)}:${Math.floor(lng / HEAT_CELL_DEGREES)}`;
+}
+function heatCellCenter(lat: number, lng: number): { lat: number; lng: number } {
+  return {
+    lat: (Math.floor(lat / HEAT_CELL_DEGREES) + 0.5) * HEAT_CELL_DEGREES,
+    lng: (Math.floor(lng / HEAT_CELL_DEGREES) + 0.5) * HEAT_CELL_DEGREES,
+  };
+}
+
+// Add activity weight to the (room, cell) a heartbeat landed in. Upsert via the
+// by_room_cell index; clamp to HEAT_MAX so a stationary user can't run it away.
+function bumpHeat(ctx: any, roomId: bigint, lat: number, lng: number): void {
+  const key = heatCellKey(lat, lng);
+  const existing = [...ctx.db.heatCell.by_room_cell.filter([roomId, key])];
+  if (existing.length > 0) {
+    const c = existing[0];
+    const weight = Math.min(HEAT_MAX, c.weight + HEAT_PER_HEARTBEAT);
+    if (weight !== c.weight) ctx.db.heatCell.id.update({ ...c, weight, lastUpdatedAt: ctx.timestamp });
+  } else {
+    const center = heatCellCenter(lat, lng);
+    ctx.db.heatCell.insert({
+      id: 0n,
+      roomId,
+      cellKey: key,
+      lat: center.lat,
+      lng: center.lng,
+      weight: HEAT_PER_HEARTBEAT,
+      lastUpdatedAt: ctx.timestamp,
+    });
+  }
 }
 
 // Append one row to the live event feed. `event` is append-only and written by
@@ -319,6 +380,9 @@ export const heartbeatLocation = spacetimedb.reducer(
       lastSeen: ctx.timestamp,
       status: 'active',
     });
+
+    // Phase-2 heatmap: bump this grid cell's activity weight.
+    bumpHeat(ctx, p.roomId, lat, lng);
 
     // Seam to Part 2: re-cluster this room now that someone moved.
     runHuddleEngine(ctx, p.roomId);
@@ -691,6 +755,12 @@ export const decayHuddles = spacetimedb.reducer(
       if (h.status === 'ended') continue;
       const w = Math.max(0, h.warmth - DECAY_AMOUNT);
       if (w !== h.warmth) ctx.db.huddle.id.update({ ...h, warmth: w });
+    }
+    // Decay heatmap cells too; drop ones that hit zero so the table stays small.
+    for (const c of [...ctx.db.heatCell.iter()]) {
+      const w = Math.max(0, c.weight - HEAT_DECAY_AMOUNT);
+      if (w <= 0) ctx.db.heatCell.id.delete(c.id);
+      else if (w !== c.weight) ctx.db.heatCell.id.update({ ...c, weight: w });
     }
   }
 );

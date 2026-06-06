@@ -1,135 +1,145 @@
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import Map, { Source, Layer, Marker } from 'react-map-gl';
+import type { MapRef, LayerProps } from 'react-map-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
 import { useEffect, useMemo, useRef } from 'react';
 
-export type UserMarker = {
-  hex: string;
+const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
+
+// [lng, lat] — Mapbox order. ~Midtown NYC, matches the server demo fallback.
+const FALLBACK: [number, number] = [-73.9857, 40.7484];
+
+// One avatar on the map. `merged` = a huddle cluster (count members in one marker).
+export type Avatar = {
+  key: string;
+  lat: number;
+  lng: number;
   name: string;
-  lat: number;
-  lng: number;
+  count: number;
   isMe: boolean;
+  merged: boolean;
 };
 
-export type HuddleMarker = {
-  id: string;
-  lat: number;
-  lng: number;
-  warmth: number;
-  memberCount: number;
-  active: boolean;
-};
-
-const FALLBACK: [number, number] = [40.7484, -73.9857]; // ~Midtown NYC
+export type HeatPoint = { lat: number; lng: number; weight: number };
 
 const PALETTE = [
   '#6B8FFF', '#FF6B9D', '#FFC93C', '#6BCB77', '#4D96FF',
-  '#FF8A80', '#64B5F6', '#81C784', '#FFD54F', '#BA68C8'
+  '#FF8A80', '#64B5F6', '#81C784', '#FFD54F', '#BA68C8',
 ];
 
-const HUDDLE_COLORS = [
-  '#FF6B9D', '#FFC93C', '#6BCB77', '#4D96FF',
-  '#FF8A80', '#64B5F6', '#FFD54F', '#BA68C8'
-];
-
-function colorFor(hex: string): string {
+function colorFor(key: string): string {
   let h = 0;
-  for (let i = 0; i < hex.length; i++) h = (h * 31 + hex.charCodeAt(i)) >>> 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
   return PALETTE[h % PALETTE.length];
 }
 
-function huddleColorFor(id: string): string {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return HUDDLE_COLORS[h % HUDDLE_COLORS.length];
-}
+// Snap-Map-style activity heatmap, driven by heat_cell weights.
+const heatLayer: LayerProps = {
+  id: 'activity-heat',
+  type: 'heatmap',
+  paint: {
+    // Real cell weights are small (a few hits), so saturate quickly: weight 2 is
+    // already warm, weight 12+ is full. Generous intensity/radius keeps sparse
+    // cells visible.
+    'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 0, 0, 2, 0.5, 12, 1],
+    'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, 1.5, 16, 3.5],
+    'heatmap-color': [
+      'interpolate', ['linear'], ['heatmap-density'],
+      0, 'rgba(0,0,0,0)',
+      0.15, 'rgba(70,130,255,0.5)',
+      0.4, 'rgba(0,200,255,0.65)',
+      0.6, 'rgba(120,255,140,0.75)',
+      0.8, 'rgba(255,220,80,0.85)',
+      1, 'rgba(255,90,90,0.95)',
+    ],
+    'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, 18, 12, 36, 16, 60],
+    'heatmap-opacity': 0.75,
+  },
+};
 
-function userIcon(u: UserMarker): L.DivIcon {
-  const color = u.isMe ? '#6B8FFF' : colorFor(u.hex);
-  const initial = (u.name || '?').slice(0, 1).toUpperCase();
-  const ring = u.isMe
-    ? 'box-shadow:0 0 0 4px rgba(107,143,255,0.4),0 0 16px rgba(107,143,255,0.6);'
-    : 'box-shadow:0 2px 8px rgba(0,0,0,0.15);';
-  return L.divIcon({
-    className: 'live-marker',
-    html: `<div class="live-dot" style="background:${color};${ring}">${initial}</div>
-           <div class="live-name">${u.name}${u.isMe ? ' (you)' : ''}</div>`,
-    iconSize: [40, 48],
-    iconAnchor: [20, 48],
-  });
-}
-
-function huddleIcon(h: HuddleMarker): L.DivIcon {
-  const baseRadius = 18;
-  const warmthBonus = Math.min(22, h.warmth / 25);
-  const radius = baseRadius + warmthBonus;
-  const diameter = radius * 2;
-
-  const color = huddleColorFor(h.id);
-  const glow = h.active
-    ? `box-shadow:0 0 0 3px ${color}40,0 0 24px ${color}60;`
-    : `box-shadow:0 4px 12px rgba(0,0,0,0.15);`;
-
-  const pulse = h.active ? 'style="animation: pulse-huddle 2s ease-in-out infinite;"' : '';
-
-  return L.divIcon({
-    className: 'huddle-glow-marker',
-    html: `<div class="huddle-icon ${h.active ? 'active' : ''}" style="width:${diameter}px;height:${diameter}px;background:${color};border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:0.95rem;${glow}${pulse}">
-             <span>${h.memberCount}</span>
-           </div>`,
-    iconSize: [diameter, diameter],
-    iconAnchor: [radius, radius],
-  });
-}
-
-// Pan to `focus` only the first time we get a valid one (don't fight the user panning).
-function Recenter({ focus }: { focus: [number, number] | null }) {
-  const map = useMap();
+// Pan to the user's location once, the first time we get a fix.
+function useRecenterOnce(mapRef: React.RefObject<MapRef | null>, myLoc: [number, number] | null) {
   const done = useRef(false);
   useEffect(() => {
-    if (focus && !done.current) {
+    if (myLoc && !done.current && mapRef.current) {
       done.current = true;
-      map.setView(focus, 15, { animate: true });
+      mapRef.current.flyTo({ center: [myLoc[1], myLoc[0]], zoom: 15, duration: 1200 });
     }
-  }, [focus, map]);
-  return null;
+  }, [myLoc, mapRef]);
 }
 
 export default function LiveMap({
-  users,
-  huddles,
+  avatars,
+  heat,
   myLoc,
 }: {
-  users: UserMarker[];
-  huddles: HuddleMarker[];
+  avatars: Avatar[];
+  heat: HeatPoint[];
   myLoc: [number, number] | null;
 }) {
-  const center = useMemo<[number, number]>(() => {
-    if (myLoc) return myLoc;
-    if (users.length) return [users[0].lat, users[0].lng];
-    return FALLBACK;
-  }, [myLoc, users]);
+  const mapRef = useRef<MapRef | null>(null);
+  useRecenterOnce(mapRef, myLoc);
+
+  const heatGeoJSON = useMemo(
+    () => ({
+      type: 'FeatureCollection' as const,
+      features: heat.map((h) => ({
+        type: 'Feature' as const,
+        properties: { weight: h.weight },
+        geometry: { type: 'Point' as const, coordinates: [h.lng, h.lat] },
+      })),
+    }),
+    [heat]
+  );
+
+  if (!TOKEN) {
+    return (
+      <div className="map map-empty">
+        <div>
+          🗺️ <strong>Map needs a Mapbox token</strong>
+          <p className="muted small">
+            Add a public <code>pk.*</code> token as <code>VITE_MAPBOX_TOKEN</code> in
+            <code> .env.local</code>, then restart the dev server.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const initialViewState = myLoc
+    ? { longitude: myLoc[1], latitude: myLoc[0], zoom: 14 }
+    : { longitude: FALLBACK[0], latitude: FALLBACK[1], zoom: 12 };
 
   return (
     <div className="map">
-      <MapContainer center={center} zoom={13} scrollWheelZoom style={{ height: '100%', width: '100%' }}>
-        <TileLayer
-          attribution="&copy; OpenStreetMap, &copy; CARTO"
-          url="https://{s}.basemaps.cartocdn.com/positron/{z}/{x}/{y}{r}.png"
-        />
-        <Recenter focus={myLoc} />
-        {huddles.map((h) => (
-          <Marker key={'h' + h.id} position={[h.lat, h.lng]} icon={huddleIcon(h)} />
-        ))}
-        {users.map((u) => (
-          <Marker key={u.hex} position={[u.lat, u.lng]} icon={userIcon(u)}>
-            <Popup>
-              {u.name}
-              {u.isMe ? ' (you)' : ''}
-            </Popup>
+      <Map
+        ref={mapRef}
+        mapboxAccessToken={TOKEN}
+        initialViewState={initialViewState}
+        mapStyle="mapbox://styles/mapbox/dark-v11"
+        projection={{ name: 'mercator' }}
+        style={{ width: '100%', height: '100%' }}
+      >
+        <Source id="activity" type="geojson" data={heatGeoJSON}>
+          <Layer {...heatLayer} />
+        </Source>
+
+        {avatars.map((a) => (
+          <Marker key={a.key} longitude={a.lng} latitude={a.lat} anchor="bottom">
+            <div className={'avatar' + (a.merged ? ' merged' : '') + (a.isMe ? ' me' : '')}>
+              <div
+                className="avatar-dot"
+                style={{ background: a.isMe ? '#6B8FFF' : colorFor(a.key) }}
+              >
+                {a.merged ? a.count : (a.name || '?').slice(0, 1).toUpperCase()}
+              </div>
+              <div className="avatar-name">
+                {a.merged ? `${a.name} +${a.count - 1}` : a.name}
+                {a.isMe ? ' (you)' : ''}
+              </div>
+            </div>
           </Marker>
         ))}
-      </MapContainer>
+      </Map>
     </div>
   );
 }

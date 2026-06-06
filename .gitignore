@@ -15,6 +15,10 @@ spacetimedb/dist/
 .vite/
 coverage/
 
+# local env / secrets (never commit)
+.env.local
+.env*.local
+
 # test / preview artifacts
 .playwright-mcp/
 /huddle-*.png

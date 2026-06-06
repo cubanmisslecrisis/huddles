@@ -73,8 +73,9 @@ banners in `PROJECT.md` / `HUDDLE_LOGIC.md` / `TECHNICAL_PLAN.md`).
 - ✅ Join screen → `joinRoom` (name + room code, default `demo`).
 - ✅ **Geolocation:** `navigator.geolocation.watchPosition` → throttled (~2s)
   `heartbeatLocation(lat,lng)`; falls back to a jittered demo location if GPS is denied.
-- ✅ **Live map** (`LiveMap.tsx`, react-leaflet dark): a marker per active user with a
-  fresh fix (own marker highlighted) + huddle warmth glows at their centroids.
+- ✅ **Live map** (`LiveMap.tsx`) — now **Mapbox GL** (dark) with merged/solo avatar markers
+  + a server-driven activity heatmap. (Originally shipped on react-leaflet; migrated in the
+  Phase-2 map slice below.)
 - ✅ Subscribe (via `useTable`) + room-scoped client filtering; status panel shows
   location state (locating / live / demo) and nearby count.
 - ✅ Event feed (newest first) + scoreboard (own row highlighted).
@@ -99,24 +100,28 @@ Phase 2 north star (see `PROJECT.md` "North Star v2" and `TECHNICAL_PLAN.md`
 is a later step). Reuses the Phase-1 proximity engine.
 
 ### Backend (`spacetimedb/src/index.ts`)
-- ⬜ `heat_cell(roomId, cellKey, weight, lastUpdatedAt)` — geohash/grid activity
-  accumulation for the heatmap; bumped on `heartbeatLocation` / warmth tick.
+- ✅ `heat_cell(roomId, cellKey, lat, lng, weight, lastUpdatedAt)` — ~200 m grid activity
+  accumulation (index `by_room_cell`); `heartbeatLocation` bumps it via `bumpHeat`
+  (clamped to `HEAT_MAX`), `decayHuddles` decays it (drops zeroed cells). Published +
+  verified on maincloud (weights accumulate per cell, decay on the 30 s tick).
 - ⬜ `visited_cell(identity, roomId, cellKey, firstSeenAt, lastSeenAt, count)` — drives the
   "city explored %" metric.
 - ⬜ `recommendation(identity, roomId, lat, lng, placeLabel, sentiment, note, createdAt)`
   + `recommendPlace(...)` reducer; emit `place_recommended` events.
 - ⬜ Hangout history = existing **ended `huddle` + `huddle_member`** (no new table); add a
   `wrapped` view/query (per-user: partners, places, durations).
-- ⬜ Extend `heartbeatLocation` to bump `heat_cell` + `visited_cell`.
 
 ### Frontend (`src/`)
-- ⬜ Migrate the map react-leaflet → **Mapbox GL** (`mapbox-gl` + `react-map-gl`,
-  `VITE_MAPBOX_TOKEN`); map becomes the central/home surface.
-- ⬜ **Heatmap layer** from `heat_cell`; **recommend/avoid overlay** (toggle).
-- ⬜ **Avatar merging** — render co-located members (a `huddle` cluster) as one merged
-  avatar (Snapmap behavior); reuse existing huddle rows.
+- ✅ Migrated the map react-leaflet → **Mapbox GL** (`mapbox-gl@3` + `react-map-gl@7`,
+  `VITE_MAPBOX_TOKEN`); map is the home surface. Graceful placeholder if the token is unset.
+- ✅ **Heatmap layer** from `heat_cell` (Mapbox `heatmap` layer, weight-driven).
+- ✅ **Avatar merging** — a non-ended `huddle` with 2+ active members renders as ONE merged
+  avatar at its centroid; everyone else is a solo avatar (computed in `App.tsx`).
+- 🟡 **Mapbox token** — needs a public `pk.*` token in `.env.local` (`VITE_MAPBOX_TOKEN`)
+  to render; placeholder shown until then. (An `sk.*` secret token must NOT be used.)
+- ⬜ **Recommend/avoid overlay** (toggle) — deferred to the next slice.
 - ⬜ **Wrapped / retrospective screen** — who/where/when/how-long from ended huddles.
-- ⬜ Recommend action UI → `recommendPlace`.
+- ⬜ **City exploration %** (needs `visited_cell`).
 
 ---
 

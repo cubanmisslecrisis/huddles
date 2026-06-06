@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import { tables, reducers } from './module_bindings';
 import { useSpacetimeDB, useTable, useReducer } from 'spacetimedb/react';
-import LiveMap, { type UserMarker, type HuddleMarker } from './LiveMap';
+import LiveMap, { type Avatar, type HeatPoint } from './LiveMap';
 
 // Demo fallback (~Midtown NYC) with small jitter, used when geolocation is denied.
 function demoLoc(): { lat: number; lng: number } {
@@ -20,6 +20,8 @@ function App() {
   const [rooms] = useTable(tables.room);
   const [presence] = useTable(tables.presence);
   const [huddles] = useTable(tables.huddle);
+  const [members] = useTable(tables.huddleMember);
+  const [heatCells] = useTable(tables.heatCell);
   const [scores] = useTable(tables.score);
 
   const joinRoom = useReducer(reducers.joinRoom);
@@ -49,75 +51,122 @@ function App() {
     [rooms, myRoomId]
   );
 
-  // Keep a stable ref to the heartbeat reducer so the geolocation watch effect
+  // Keep a stable ref to the heartbeat reducer so the geolocation effect
   // doesn't tear down/recreate on every render.
   const beatRef = useRef(heartbeatLocation);
   beatRef.current = heartbeatLocation;
+  const lastFixRef = useRef<{ lat: number; lng: number } | null>(null);
 
-  // Stream live location once joined.
+  // Stream live location once joined. We refresh our fix from watchPosition AND
+  // re-send it on a fixed interval — so presence stays fresh, huddles stay alive,
+  // and the activity heatmap keeps building even while you're standing still.
   useEffect(() => {
     if (!joined) return;
-    let last = 0;
-    const send = (lat: number, lng: number, live: boolean) => {
+
+    const beat = () => {
+      const f = lastFixRef.current;
+      if (f) beatRef.current({ lat: f.lat, lng: f.lng }).catch(console.error);
+    };
+    const apply = (lat: number, lng: number, live: boolean) => {
+      const first = lastFixRef.current === null;
+      lastFixRef.current = { lat, lng };
       setMyLoc([lat, lng]);
       setGeo(live ? 'live' : 'demo');
-      const now = Date.now();
-      if (now - last < 2000) return; // throttle to ~every 2s
-      last = now;
-      beatRef.current({ lat, lng }).catch(console.error);
+      if (first) beat(); // send immediately on the first fix, don't wait for the tick
     };
 
+    let watchId: number | null = null;
     if (!navigator.geolocation) {
       const d = demoLoc();
-      send(d.lat, d.lng, false);
-      return;
+      apply(d.lat, d.lng, false);
+    } else {
+      setGeo('locating');
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => apply(pos.coords.latitude, pos.coords.longitude, true),
+        () => {
+          const d = demoLoc();
+          apply(d.lat, d.lng, false);
+        },
+        { enableHighAccuracy: true, maximumAge: 4000, timeout: 10000 }
+      );
     }
 
-    setGeo('locating');
-    const id = navigator.geolocation.watchPosition(
-      (pos) => send(pos.coords.latitude, pos.coords.longitude, true),
-      () => {
-        const d = demoLoc();
-        send(d.lat, d.lng, false);
-      },
-      { enableHighAccuracy: true, maximumAge: 4000, timeout: 10000 }
-    );
-    return () => navigator.geolocation.clearWatch(id);
+    // Steady heartbeat: keeps heat accumulating + presence fresh when stationary.
+    const interval = setInterval(beat, 3000);
+    return () => {
+      clearInterval(interval);
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    };
   }, [joined]);
 
-  const userMarkers = useMemo<UserMarker[]>(
+  // Merge co-located people into one avatar (Zenly/Snap-Map): each non-ended huddle
+  // with 2+ active members → one merged marker at its centroid; everyone else with a
+  // live fix → a solo marker.
+  const avatars = useMemo<Avatar[]>(() => {
+    if (myRoomId === undefined) return [];
+    const membersByHuddle = new Map<string, string[]>();
+    for (const m of members) {
+      if (m.leftAt != null) continue;
+      const k = m.huddleId.toString();
+      const list = membersByHuddle.get(k) ?? [];
+      list.push(m.identity.toHexString());
+      membersByHuddle.set(k, list);
+    }
+
+    const out: Avatar[] = [];
+    const mergedHexes = new Set<string>();
+    for (const h of huddles) {
+      if (h.roomId !== myRoomId || h.status === 'ended') continue;
+      const hexes = membersByHuddle.get(h.id.toString()) ?? [];
+      if (hexes.length < 2) continue;
+      hexes.forEach((x) => mergedHexes.add(x));
+      out.push({
+        key: 'h' + h.id.toString(),
+        lat: h.lat,
+        lng: h.lng,
+        name: nameByHex.get(hexes[0]) ?? 'Someone',
+        count: hexes.length,
+        isMe: myHex ? hexes.includes(myHex) : false,
+        merged: true,
+      });
+    }
+
+    for (const p of presence) {
+      if (p.roomId !== myRoomId || p.status !== 'active' || !p.hasFix) continue;
+      const hex = p.identity.toHexString();
+      if (mergedHexes.has(hex)) continue;
+      out.push({
+        key: hex,
+        lat: p.lat,
+        lng: p.lng,
+        name: nameByHex.get(hex) ?? 'Someone',
+        count: 1,
+        isMe: hex === myHex,
+        merged: false,
+      });
+    }
+    return out;
+  }, [huddles, members, presence, myRoomId, nameByHex, myHex]);
+
+  const heat = useMemo<HeatPoint[]>(
     () =>
-      presence
-        .filter(
-          (p) =>
-            myRoomId !== undefined &&
-            p.roomId === myRoomId &&
-            p.status === 'active' &&
-            p.hasFix
-        )
-        .map((p) => ({
-          hex: p.identity.toHexString(),
-          name: nameByHex.get(p.identity.toHexString()) ?? 'Someone',
-          lat: p.lat,
-          lng: p.lng,
-          isMe: p.identity.toHexString() === myHex,
-        })),
-    [presence, myRoomId, nameByHex, myHex]
+      heatCells
+        .filter((c) => myRoomId !== undefined && c.roomId === myRoomId)
+        .map((c) => ({ lat: c.lat, lng: c.lng, weight: c.weight })),
+    [heatCells, myRoomId]
   );
 
-  const huddleMarkers = useMemo<HuddleMarker[]>(
+  const nearbyCount = useMemo(
     () =>
-      huddles
-        .filter((h) => myRoomId !== undefined && h.roomId === myRoomId && h.status !== 'ended')
-        .map((h) => ({
-          id: h.id.toString(),
-          lat: h.lat,
-          lng: h.lng,
-          warmth: h.warmth,
-          memberCount: h.memberCount,
-          active: h.status === 'active',
-        })),
-    [huddles, myRoomId]
+      presence.filter(
+        (p) =>
+          myRoomId !== undefined &&
+          p.roomId === myRoomId &&
+          p.status === 'active' &&
+          p.hasFix &&
+          p.identity.toHexString() !== myHex
+      ).length,
+    [presence, myRoomId, myHex]
   );
 
   const board = useMemo(
@@ -175,7 +224,6 @@ function App() {
     );
   }
 
-  const nearbyCount = userMarkers.filter((u) => !u.isMe).length;
   const otherUsers = users.filter((u) => u.identity.toHexString() !== myHex);
 
   return (
@@ -209,7 +257,7 @@ function App() {
           </div>
 
           <div style={{ flex: 1, minHeight: 0, marginLeft: '16px', marginRight: '16px', marginBottom: '16px' }}>
-            <LiveMap users={userMarkers} huddles={huddleMarkers} myLoc={myLoc} />
+            <LiveMap avatars={avatars} heat={heat} myLoc={myLoc} />
           </div>
         </>
       ) : tab === 'friends' ? (

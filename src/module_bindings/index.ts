@@ -43,6 +43,7 @@ import PingNearbyReducer from "./ping_nearby_reducer";
 
 // Import all table schema definitions
 import EventRow from "./event_table";
+import HeatCellRow from "./heat_cell_table";
 import HuddleRow from "./huddle_table";
 import HuddleMemberRow from "./huddle_member_table";
 import PresenceRow from "./presence_table";
@@ -68,6 +69,24 @@ const tablesSchema = __schema({
       { name: 'event_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, EventRow),
+  heatCell: __table({
+    name: 'heat_cell',
+    indexes: [
+      { accessor: 'id', name: 'heat_cell_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'by_room_cell', name: 'heat_cell_room_id_cell_key_idx_btree', algorithm: 'btree', columns: [
+        'roomId',
+        'cellKey',
+      ] },
+      { accessor: 'roomId', name: 'heat_cell_room_id_idx_btree', algorithm: 'btree', columns: [
+        'roomId',
+      ] },
+    ],
+    constraints: [
+      { name: 'heat_cell_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, HeatCellRow),
   huddle: __table({
     name: 'huddle',
     indexes: [
