@@ -4,6 +4,7 @@ import { tables, reducers } from './module_bindings';
 import { useSpacetimeDB, useTable, useReducer } from 'spacetimedb/react';
 import { QRCodeSVG } from 'qrcode.react';
 import HuddleMap from './HuddleMap';
+import Profile from './Profile';
 
 const PALETTE = [
   '#7FD1FF', '#FFB3C7', '#FFE08A', '#B5E8A0',
@@ -90,6 +91,23 @@ function App() {
     return mine[0] ?? null;
   }, [huddles, myHuddleIds]);
 
+  const profileStats = useMemo(() => {
+    const myHuddleList = huddles.filter((h) => myHuddleIds.has(h.id.toString()));
+    const totalWarmth = myHuddleList.reduce((sum, h) => sum + h.warmth, 0);
+    const uniqueFriends = new Set<string>();
+    for (const m of members) {
+      if (myHuddleIds.has(m.huddleId.toString())) {
+        uniqueFriends.add(m.identity.toHexString());
+      }
+    }
+    return {
+      totalHuddles: myHuddleList.length,
+      totalWarmth,
+      friendCount: Math.max(0, uniqueFriends.size - 1), // subtract self
+      territoryClaimed: Math.floor(totalWarmth / 200), // rough territory count
+    };
+  }, [huddles, members, myHuddleIds]);
+
   // Auto-join when arriving via a QR / share link: ?h=<huddleId>
   const joinedRef = useRef<string | null>(null);
   useEffect(() => {
@@ -110,7 +128,7 @@ function App() {
   const [colorInput, setColorInput] = useState<string | null>(null);
   const [newHuddle, setNewHuddle] = useState('');
   const [starting, setStarting] = useState(false);
-  const [tab, setTab] = useState<'home' | 'map'>('home');
+  const [tab, setTab] = useState<'home' | 'map' | 'profile'>('home');
 
   // ── Connecting ──
   if (!connected || !identity) {
@@ -295,8 +313,18 @@ function App() {
             </div>
           </section>
         </>
-      ) : (
+      ) : tab === 'map' ? (
         <HuddleMap huddles={huddles} members={members} players={players} />
+      ) : (
+        <Profile
+          name={myName}
+          penguinColor={me?.penguinColor ?? PALETTE[0]}
+          totalHuddles={profileStats.totalHuddles}
+          totalWarmth={profileStats.totalWarmth}
+          friendCount={profileStats.friendCount}
+          territoryClaimed={profileStats.territoryClaimed}
+          onColorChange={(color) => setProfile({ name: myName, penguinColor: color }).catch(console.error)}
+        />
       )}
 
       <nav className="tabbar">
@@ -305,6 +333,9 @@ function App() {
         </button>
         <button className={'tab' + (tab === 'map' ? ' active' : '')} onClick={() => setTab('map')}>
           🗺️ Map
+        </button>
+        <button className={'tab' + (tab === 'profile' ? ' active' : '')} onClick={() => setTab('profile')}>
+          🐧 Profile
         </button>
       </nav>
     </div>
