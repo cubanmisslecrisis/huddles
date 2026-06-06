@@ -265,9 +265,9 @@ section p {
 .map {
   width: 100%;
   height: 100%;
-  border-radius: 0;
+  border-radius: 16px;
   border: none;
-  box-shadow: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   overflow: hidden;
 }
 
@@ -281,13 +281,14 @@ section p {
 .huddle-map {
   width: 100%;
   height: 100%;
-  border-radius: 0;
+  border-radius: 16px;
   overflow: hidden;
 }
 
 .leaflet-container {
-  background: linear-gradient(135deg, #E8F4FF, #F0F8FF);
+  background: #f0f8ff;
   font-family: inherit;
+  z-index: 1;
 }
 
 /* ── Custom Map Markers ── */
