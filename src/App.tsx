@@ -296,7 +296,7 @@ function App() {
           </section>
         </>
       ) : (
-        <HuddleMap huddles={huddles} />
+        <HuddleMap huddles={huddles} members={members} players={players} />
       )}
 
       <nav className="tabbar">

@@ -154,12 +154,3 @@ section h2 { font-size: 1.05rem; margin: 4px 0 10px; }
   border: 1px solid rgba(255,255,255,0.08);
 }
 .leaflet-container { background: #0b1220; font-family: inherit; }
-.leaflet-tooltip {
-  background: #11203a; color: #eaf1ff; border: 1px solid rgba(255,255,255,0.15);
-  box-shadow: 0 4px 14px rgba(0,0,0,0.4);
-}
-.leaflet-tooltip-top::before { border-top-color: #11203a; }
-.leaflet-control-attribution {
-  background: rgba(7,11,20,0.7) !important; color: #7e8ca8 !important;
-}
-.leaflet-control-attribution a { color: #9fb0cc !important; }
