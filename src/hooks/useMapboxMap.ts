@@ -70,9 +70,9 @@ export function useMapboxMap({
     let startTime = Date.now();
 
     const animate = () => {
-      const elapsed = (Date.now() - startTime) % 3000;
-      const progress = elapsed / 3000;
-      const pulse = 0.5 + Math.sin(progress * Math.PI * 2) * 0.35;
+      const elapsed = (Date.now() - startTime) % 2500;
+      const progress = elapsed / 2500;
+      const pulse = 0.4 + Math.sin(progress * Math.PI * 2) * 0.45;
       setHeatmapPulse(pulse);
       animationFrameId = requestAnimationFrame(animate);
     };
@@ -140,28 +140,28 @@ export function useMapboxMap({
           source: WARMTH_SOURCE_ID,
           slot: 'top',
           paint: {
-            'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 0, 0, 2, 0.4, 14, 1],
-            'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 11, 0.8, 15, 1.6, 17, 2.2],
+            'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 0, 0, 1, 0.6, 2, 1],
+            'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 11, 1.2, 13, 1.8, 15, 2.4, 17, 3.0],
             'heatmap-color': [
               'interpolate',
               ['linear'],
               ['heatmap-density'],
               0,
-              'rgba(10, 0, 21, 0)',
+              'rgba(50, 50, 50, 0)',
               0.1,
-              'rgba(61, 0, 102, 0.3)',
-              0.25,
-              'rgba(136, 0, 255, 0.5)',
-              0.4,
-              'rgba(255, 0, 255, 0.65)',
-              0.6,
-              'rgba(255, 51, 102, 0.8)',
-              0.8,
-              'rgba(255, 170, 0, 0.9)',
+              'rgba(200, 100, 50, 0.3)',
+              0.3,
+              'rgba(255, 140, 40, 0.5)',
+              0.5,
+              'rgba(255, 100, 20, 0.7)',
+              0.7,
+              'rgba(220, 50, 20, 0.85)',
+              0.9,
+              'rgba(180, 20, 10, 0.95)',
               1,
-              'rgba(255, 255, 0, 1)',
+              'rgba(255, 200, 0, 1)',
             ],
-            'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 11, 18, 15, 45, 17, 70],
+            'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 11, 35, 13, 60, 15, 90, 17, 120],
             'heatmap-opacity': warmthEnabled ? heatmapPulse : 0,
           },
         });
