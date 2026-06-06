@@ -5,8 +5,16 @@
 > GPS fixes is `≤ PROXIMITY_RADIUS_METERS` (demo: 100 m). Presence stores `lat`/`lng`
 > (+`hasFix`), refreshed by `heartbeatLocation(lat,lng)`. A huddle forms around a **cluster**
 > of 2+ nearby users and lives at the cluster centroid. The state machine
-> (candidate→active→cooling→ended), constants, dwell/cooling, warmth, and freshness rules
+> (candidate→active→cooling→ended), constants, dwell/cooling, and freshness rules
 > are otherwise unchanged — just swap "in the same zone" for "within the radius."
+>
+> As implemented in `runHuddleEngine`: each tick the fresh located users in a room are
+> grouped by **deterministic union-find over the "within `PROXIMITY_RADIUS_METERS`" graph**
+> (transitive — A–B and B–C close ⇒ one cluster), and each cluster is matched to an existing
+> live huddle by **Jaccard membership overlap** (`OVERLAP_THRESHOLD`) so a huddle keeps its
+> identity as members come and go. There is **no `zone` table**: warmth and its decay now live
+> on the **huddle** (`huddle.warmth`, `decayHuddles`), recomputed at the centroid each tick.
+> Below, read "zone" as "the huddle's cluster".
 
 ## Purpose
 
