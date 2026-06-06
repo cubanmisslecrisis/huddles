@@ -7,6 +7,8 @@
 - **[PROJECT.md](./PROJECT.md)** — product context: what Huddles is, the feel, MVP scope, demo experience, non-goals.
 - **[HUDDLE_LOGIC.md](./HUDDLE_LOGIC.md)** — the game rules and `candidate → active → cooling → ended` state machine, constants, warmth/decay, pseudocode, acceptance criteria.
 - **[TECHNICAL_PLAN.md](./TECHNICAL_PLAN.md)** — architecture, tables, reducers, scheduling, subscriptions, screens, demo script, definition of done.
+- **[PROGRESS.md](./PROGRESS.md)** — build status: what's done, what's starter-only, and the remaining to-do checklist toward the spec.
+- **[WORK_SPLIT.md](./WORK_SPLIT.md)** — how the backend is divided for parallel work (Part 1 proximity / Part 2 huddling, split at the `presence` table) + ownership.
 
 When the docs and this file disagree on *mechanics*, the docs win; this section governs *how to write the code*.
 
@@ -31,6 +33,17 @@ So the client and the live module already diverge today, and both diverge from t
 - **Regenerate bindings after any schema change:** `npm run spacetime:generate` (writes `src/module_bindings/` — never hand-edit those files).
 - **Keep tunable constants** (dwell/cooling/warmth thresholds from `HUDDLE_LOGIC.md`) in one module-level block so demo↔production tuning is a single edit.
 - **Local dev:** `npm run dev` (Vite). Publish: `npm run spacetime:publish` (maincloud) / `:publish:local`. The reference below covers full CLI/SDK usage.
+
+## Keep the context docs current
+
+The Markdown context files are living documents, not write-once artifacts. Treat updating them as part of finishing a task, not an afterthought:
+
+- **`PROGRESS.md`** — update it **as part of every change**. When you start something move it toward 🟡, when you finish move it to ✅, and add/remove ⬜ items as scope shifts. PROGRESS.md should always reflect the *actual* state of the repo at the end of your turn — never leave it stale.
+- **`HUDDLE_LOGIC.md` / `TECHNICAL_PLAN.md`** — when the implementation diverges from these (new table, changed reducer signature, different constant, new scheduling approach), update the doc in the same change so it stays the source of truth. If a deliberate deviation is made, record it rather than silently drifting.
+- **`PROJECT.md`** — update only when product scope/intent actually changes (rare); it is the product north star, not an implementation log.
+- **`CLAUDE.md` / `AGENTS.md`** — when a new convention emerges, add it here. **These two files must stay identical** — after editing one, copy it to the other (`cp CLAUDE.md AGENTS.md`).
+
+Rule of thumb: if a change would make any context doc wrong, fix the doc in the same turn.
 
 ---
 
