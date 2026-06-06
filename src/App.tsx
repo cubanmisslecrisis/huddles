@@ -3,6 +3,7 @@ import './App.css';
 import { tables, reducers } from './module_bindings';
 import { useSpacetimeDB, useTable, useReducer } from 'spacetimedb/react';
 import { QRCodeSVG } from 'qrcode.react';
+import HuddleMap from './HuddleMap';
 
 const PALETTE = [
   '#7FD1FF', '#FFB3C7', '#FFE08A', '#B5E8A0',
@@ -109,6 +110,7 @@ function App() {
   const [colorInput, setColorInput] = useState<string | null>(null);
   const [newHuddle, setNewHuddle] = useState('');
   const [starting, setStarting] = useState(false);
+  const [tab, setTab] = useState<'home' | 'map'>('home');
 
   // ── Connecting ──
   if (!connected || !identity) {
@@ -245,51 +247,66 @@ function App() {
         <span className="brand">🐧 Huddle</span>
       </header>
 
-      <section className="start">
-        <input
-          placeholder="name your huddle…"
-          value={newHuddle}
-          onChange={(e) => setNewHuddle(e.target.value)}
-        />
-        <button className="primary big" disabled={starting} onClick={onStart}>
-          {starting ? 'Starting…' : 'Start a huddle'}
+      {tab === 'home' ? (
+        <>
+          <section className="start">
+            <input
+              placeholder="name your huddle…"
+              value={newHuddle}
+              onChange={(e) => setNewHuddle(e.target.value)}
+            />
+            <button className="primary big" disabled={starting} onClick={onStart}>
+              {starting ? 'Starting…' : 'Start a huddle'}
+            </button>
+          </section>
+
+          <section>
+            <h2>Huddles forming</h2>
+            {activeHuddles.length === 0 && <p className="muted">No live huddles yet — start one!</p>}
+            <div className="list">
+              {activeHuddles.map((h) => (
+                <div key={h.id.toString()} className="card">
+                  <div className="card-main">
+                    <strong>{h.name}</strong>
+                    <span className="muted small">{h.memberCount} 🐧 · {Math.round(h.warmth)} warmth</span>
+                  </div>
+                  <button className="primary" onClick={() => joinHuddle({ huddleId: h.id }).catch(console.error)}>
+                    Join
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <h2>🔥 Warmest huddles</h2>
+            <div className="list">
+              {leaderboard.length === 0 && <p className="muted">Be the first to make some warmth.</p>}
+              {leaderboard.map((h, i) => (
+                <div key={h.id.toString()} className="card rank">
+                  <span className="rank-n">{i + 1}</span>
+                  <div className="card-main">
+                    <strong>{h.name}</strong>
+                    <span className="muted small">{h.memberCount} 🐧 {h.active ? '· live' : '· ended'}</span>
+                  </div>
+                  <span className="warm-badge">{Math.round(h.warmth)}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
+      ) : (
+        <HuddleMap huddles={huddles} />
+      )}
+
+      <nav className="tabbar">
+        <button className={'tab' + (tab === 'home' ? ' active' : '')} onClick={() => setTab('home')}>
+          🏠 Home
         </button>
-      </section>
-
-      <section>
-        <h2>Huddles forming</h2>
-        {activeHuddles.length === 0 && <p className="muted">No live huddles yet — start one!</p>}
-        <div className="list">
-          {activeHuddles.map((h) => (
-            <div key={h.id.toString()} className="card">
-              <div className="card-main">
-                <strong>{h.name}</strong>
-                <span className="muted small">{h.memberCount} 🐧 · {Math.round(h.warmth)} warmth</span>
-              </div>
-              <button className="primary" onClick={() => joinHuddle({ huddleId: h.id }).catch(console.error)}>
-                Join
-              </button>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <h2>🔥 Warmest huddles</h2>
-        <div className="list">
-          {leaderboard.length === 0 && <p className="muted">Be the first to make some warmth.</p>}
-          {leaderboard.map((h, i) => (
-            <div key={h.id.toString()} className="card rank">
-              <span className="rank-n">{i + 1}</span>
-              <div className="card-main">
-                <strong>{h.name}</strong>
-                <span className="muted small">{h.memberCount} 🐧 {h.active ? '· live' : '· ended'}</span>
-              </div>
-              <span className="warm-badge">{Math.round(h.warmth)}</span>
-            </div>
-          ))}
-        </div>
-      </section>
+        <button className={'tab' + (tab === 'map' ? ' active' : '')} onClick={() => setTab('map')}>
+          🗺️ Map
+        </button>
+      </nav>
     </div>
   );
 }

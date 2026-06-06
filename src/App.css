@@ -136,3 +136,30 @@ section h2 { font-size: 1.05rem; margin: 4px 0 10px; }
   font-weight: 800; color: #FFB877;
   background: rgba(255,150,80,0.12); padding: 5px 11px; border-radius: 999px; flex: none;
 }
+
+/* ── Tabs ── */
+.tabbar {
+  position: sticky; bottom: 0; z-index: 500;
+  display: flex; gap: 10px; margin-top: auto;
+  padding: 12px 0 max(8px, env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(7,11,20,0) 0%, #070b14 45%);
+}
+.tab { flex: 1; background: rgba(255,255,255,0.07); color: #cdd9ee; }
+.tab.active { background: linear-gradient(135deg, #7FD1FF, #5aa8ff); color: #06243f; }
+
+/* ── Map ── */
+.map {
+  width: 100%; flex: 1; min-height: 60vh;
+  border-radius: 16px; overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.leaflet-container { background: #0b1220; font-family: inherit; }
+.leaflet-tooltip {
+  background: #11203a; color: #eaf1ff; border: 1px solid rgba(255,255,255,0.15);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+}
+.leaflet-tooltip-top::before { border-top-color: #11203a; }
+.leaflet-control-attribution {
+  background: rgba(7,11,20,0.7) !important; color: #7e8ca8 !important;
+}
+.leaflet-control-attribution a { color: #9fb0cc !important; }

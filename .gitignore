@@ -17,4 +17,4 @@ coverage/
 
 # test / preview artifacts
 .playwright-mcp/
-huddle-room.png
+/huddle-*.png
