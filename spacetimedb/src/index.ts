@@ -28,19 +28,21 @@ const COOLING_THRESHOLD_SECONDS = 10;
 const PRESENCE_STALE_SECONDS = 15;
 const WARMTH_PER_TICK = 5;
 const POINTS_PER_TICK = 5;
-const DECAY_INTERVAL_SECONDS = 30;
-const DECAY_AMOUNT = 2;
+const DECAY_INTERVAL_SECONDS = 10;
+const DECAY_AMOUNT = 1; // huddle warmth removed per decay tick (now 10s)
 
-// Phase-2 activity heatmap: server-aggregated weight per ~grid cell.
+// Phase-2 activity heatmap: server-aggregated weight per ~grid cell. Tuned so a cell
+// lights up within seconds of activity and fades within ~1 min once it stops.
 const HEAT_CELL_DEGREES = 0.002; // ~200 m grid cell (lat) for the heatmap
-const HEAT_PER_HEARTBEAT = 1; // weight added to a cell on each heartbeat
-const HEAT_DECAY_AMOUNT = 2; // weight removed per decay tick (30s)
-const HEAT_MAX = 100; // clamp so a single cell's weight stays bounded
+const HEAT_PER_HEARTBEAT = 2; // weight added to a cell on each heartbeat
+const HEAT_DECAY_FACTOR = 0.6; // multiplicative decay per tick (smooth, snappy fade)
+const HEAT_MIN = 0.8; // drop cells below this so the table stays small
+const HEAT_MAX = 16; // clamp so a single cell's weight stays bounded
 
 // Scheduled tick cadences, in microseconds.
 const HUDDLE_TICK_MICROS = 1_000_000n; // 1s — runs the huddle state machine
 const PRESENCE_TICK_MICROS = 5_000_000n; // 5s — expire stale presence
-const DECAY_TICK_MICROS = 30_000_000n; // 30s — cool huddle warmth
+const DECAY_TICK_MICROS = 10_000_000n; // 10s — cool huddle warmth + heatmap
 
 // ═════════════════════════════════════════════════════════════════════════════
 // PART 1 — location input + proximity (Part 1 owner edits below)
@@ -756,11 +758,11 @@ export const decayHuddles = spacetimedb.reducer(
       const w = Math.max(0, h.warmth - DECAY_AMOUNT);
       if (w !== h.warmth) ctx.db.huddle.id.update({ ...h, warmth: w });
     }
-    // Decay heatmap cells too; drop ones that hit zero so the table stays small.
+    // Decay heatmap cells multiplicatively (smooth + snappy); drop faint ones.
     for (const c of [...ctx.db.heatCell.iter()]) {
-      const w = Math.max(0, c.weight - HEAT_DECAY_AMOUNT);
-      if (w <= 0) ctx.db.heatCell.id.delete(c.id);
-      else if (w !== c.weight) ctx.db.heatCell.id.update({ ...c, weight: w });
+      const w = c.weight * HEAT_DECAY_FACTOR;
+      if (w < HEAT_MIN) ctx.db.heatCell.id.delete(c.id);
+      else ctx.db.heatCell.id.update({ ...c, weight: w });
     }
   }
 );

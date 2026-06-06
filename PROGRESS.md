@@ -114,9 +114,16 @@ is a later step). Reuses the Phase-1 proximity engine.
 ### Frontend (`src/`)
 - ✅ Migrated the map react-leaflet → **Mapbox GL** (`mapbox-gl@3` + `react-map-gl@7`,
   `VITE_MAPBOX_TOKEN`); map is the home surface. Graceful placeholder if the token is unset.
-- ✅ **Heatmap layer** from `heat_cell` (Mapbox `heatmap` layer, weight-driven).
+- ✅ **Heatmap layer** from `heat_cell` (Mapbox `heatmap` layer, weight-driven). Snappy
+  fade: heat decays **multiplicatively** (`×0.6`/10 s, cap 16) so cells light up in seconds
+  and fade in ~1 min (verified: weights stay bounded + fractional on maincloud).
 - ✅ **Avatar merging** — a non-ended `huddle` with 2+ active members renders as ONE merged
   avatar at its centroid; everyone else is a solo avatar (computed in `App.tsx`).
+- ✅ **Huddle "generating heat" pulse** — a merged avatar pulses scaled to the huddle's
+  `warmth` (faster/bigger/redder as it heats), ring tinted to the heatmap ramp; forming
+  huddles (`warmth 0`) stay calm. Verified building + merged rendering; the live pulse
+  needs a real 2+ person *active* huddle to view (CLI peers can't sustain one — they flap
+  offline on disconnect).
 - 🟡 **Mapbox token** — needs a public `pk.*` token in `.env.local` (`VITE_MAPBOX_TOKEN`)
   to render; placeholder shown until then. (An `sk.*` secret token must NOT be used.)
 - ⬜ **Recommend/avoid overlay** (toggle) — deferred to the next slice.

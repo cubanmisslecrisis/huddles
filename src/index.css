@@ -1,33 +1,185 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-heading: 'Archivo', 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+
+  /* Huddles brand tokens */
+  --color-surface-warm: var(--surface-warm);
+  --color-red: var(--red);
+  --color-blue: var(--blue);
+  --color-green: var(--green);
+  --color-pink: var(--pink);
+  --color-yellow: var(--yellow);
+  --color-orange: var(--orange);
+  --color-purple: var(--purple);
+  --color-warmth: var(--warmth);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
 :root {
-  color-scheme: light;
-  --blue: #6B8FFF;
-  --blue-light: #8BA3FF;
-  --blue-dark: #4A6FD8;
-  --bg: #F5F7FF;
-  --card-bg: #FFFFFF;
-  --text: #1A1F3A;
-  --text-muted: #7B8BA8;
-  --border: #E8EBF5;
+  --background: oklch(0.98 0.012 85);
+  --foreground: oklch(0.18 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0 0);
+  --primary: oklch(0.18 0 0);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.96 0.01 85);
+  --secondary-foreground: oklch(0.18 0 0);
+  --muted: oklch(0.96 0.008 85);
+  --muted-foreground: oklch(0.52 0.012 70);
+  --accent: oklch(0.96 0.01 85);
+  --accent-foreground: oklch(0.18 0 0);
+  --destructive: oklch(0.62 0.22 27);
+  --border: oklch(0.9 0.012 80);
+  --input: oklch(0.9 0.012 80);
+  --ring: oklch(0.62 0.18 255);
+
+  --surface-warm: oklch(0.995 0.006 90);
+
+  /* Brand palette */
+  --red: oklch(0.62 0.21 27);
+  --blue: oklch(0.58 0.2 258);
+  --green: oklch(0.62 0.15 158);
+  --pink: oklch(0.66 0.22 7);
+  --yellow: oklch(0.86 0.16 90);
+  --orange: oklch(0.72 0.18 50);
+  --purple: oklch(0.55 0.22 290);
+  --warmth: oklch(0.74 0.17 55);
+
+  --radius: 0.75rem;
+
+  --sidebar: oklch(0.98 0.012 85);
+  --sidebar-foreground: oklch(0.18 0 0);
+  --sidebar-primary: oklch(0.18 0 0);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.96 0.01 85);
+  --sidebar-accent-foreground: oklch(0.18 0 0);
+  --sidebar-border: oklch(0.9 0.012 80);
+  --sidebar-ring: oklch(0.62 0.18 255);
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
+.dark {
+  --background: oklch(0.16 0.008 80);
+  --foreground: oklch(0.97 0 0);
+  --card: oklch(0.21 0.006 80);
+  --card-foreground: oklch(0.97 0 0);
+  --popover: oklch(0.21 0.006 80);
+  --popover-foreground: oklch(0.97 0 0);
+  --primary: oklch(0.97 0 0);
+  --primary-foreground: oklch(0.2 0 0);
+  --secondary: oklch(0.27 0.006 80);
+  --secondary-foreground: oklch(0.97 0 0);
+  --muted: oklch(0.27 0.006 80);
+  --muted-foreground: oklch(0.7 0.01 80);
+  --accent: oklch(0.27 0.006 80);
+  --accent-foreground: oklch(0.97 0 0);
+  --destructive: oklch(0.7 0.19 22);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.58 0.2 258);
+  --surface-warm: oklch(0.21 0.006 80);
+  --sidebar: oklch(0.18 0.008 80);
+  --sidebar-foreground: oklch(0.97 0 0);
+  --sidebar-primary: oklch(0.58 0.2 258);
+  --sidebar-primary-foreground: oklch(0.97 0 0);
+  --sidebar-accent: oklch(0.27 0.006 80);
+  --sidebar-accent-foreground: oklch(0.97 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.58 0.2 258);
 }
 
-html, body, #root { height: 100%; margin: 0; }
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-tap-highlight-color: transparent;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
 }
 
-#root {
-  display: flex;
-  justify-content: center;
+/* Full-bleed mobile map: hide the default Mapbox control chrome. */
+.mapboxgl-ctrl-bottom-left,
+.mapboxgl-ctrl-bottom-right {
+  display: none;
+}
+
+/* Warmth pulse ring under merged huddle markers (ported from the old LiveMap). */
+@keyframes huddle-heat-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(var(--pulse-scale, 2));
+    opacity: 0;
+  }
+}
+.heat-ring {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 100%;
+  height: 100%;
+  border-radius: 9999px;
+  background: var(--pulse-color, var(--color-warmth));
+  animation: huddle-heat-pulse 1.6s ease-out infinite;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

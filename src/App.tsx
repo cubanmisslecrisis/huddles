@@ -1,8 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import './App.css';
 import { tables, reducers } from './module_bindings';
 import { useSpacetimeDB, useTable, useReducer } from 'spacetimedb/react';
-import LiveMap, { type Avatar, type HeatPoint } from './LiveMap';
+import { MobileShell } from '@/components/shell/MobileShell';
+import { PingSheet } from '@/components/flows/PingSheet';
+import { SearchModal } from '@/components/flows/SearchModal';
+import { AddToMapSheet } from '@/components/flows/AddToMapSheet';
+import { ProfileSettings } from '@/components/flows/ProfileSettings';
+import { HuddlesLogo } from '@/components/HuddlesLogo';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import type { MapControls } from '@/components/map/MapCanvas';
+import type { MapAvatar, HeatPoint, Selection } from '@/components/map/markers';
+import type { FriendVM, HuddleVM, EventVM, ScoreVM, MeVM } from '@/lib/view';
+import type { Lens } from '@/lib/nav-tabs';
+import type { SheetState } from '@/components/panels/BottomSheet';
+import { filterToLayers, getPin, type FilterKey, type LayerKey } from '@/lib/places-data';
+import { distanceMeters } from '@/lib/avatar';
 
 // Demo fallback (~Midtown NYC) with small jitter, used when geolocation is denied.
 function demoLoc(): { lat: number; lng: number } {
@@ -11,6 +24,14 @@ function demoLoc(): { lat: number; lng: number } {
     lng: -73.9857 + (Math.random() - 0.5) * 0.004,
   };
 }
+
+const DEFAULT_LAYERS: Record<LayerKey, boolean> = {
+  friends: true,
+  huddles: true,
+  recs: true,
+  saved: true,
+  warmth: true,
+};
 
 function App() {
   const { identity, isActive: connected } = useSpacetimeDB();
@@ -23,16 +44,30 @@ function App() {
   const [members] = useTable(tables.huddleMember);
   const [heatCells] = useTable(tables.heatCell);
   const [scores] = useTable(tables.score);
+  const [events] = useTable(tables.event);
 
   const joinRoom = useReducer(reducers.joinRoom);
   const heartbeatLocation = useReducer(reducers.heartbeatLocation);
   const leaveRoom = useReducer(reducers.leaveRoom);
+  const pingNearby = useReducer(reducers.pingNearby);
 
   const [nameInput, setNameInput] = useState('');
   const [roomInput, setRoomInput] = useState('demo');
   const [geo, setGeo] = useState<'idle' | 'locating' | 'live' | 'demo'>('idle');
-  const [myLoc, setMyLoc] = useState<[number, number] | null>(null);
-  const [tab, setTab] = useState<'home' | 'friends' | 'profile' | 'leaderboard'>('home');
+  const [myLoc, setMyLoc] = useState<{ lat: number; lng: number } | null>(null);
+
+  // UI state (ported from the skeleton's HuddlesApp).
+  const [lens, setLens] = useState<Lens>('map');
+  const [selection, setSelection] = useState<Selection>(null);
+  const [sheetState, setSheetState] = useState<SheetState>('peek');
+  const [filter, setFilter] = useState<FilterKey>('all');
+  const [activeLayers, setActiveLayers] = useState<Record<LayerKey, boolean>>(DEFAULT_LAYERS);
+  const [showAdd, setShowAdd] = useState(false);
+  const [showPing, setShowPing] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+
+  const mapControls = useRef<MapControls | null>(null);
 
   const nameByHex = useMemo(() => {
     const m = new Map<string, string>();
@@ -51,15 +86,11 @@ function App() {
     [rooms, myRoomId]
   );
 
-  // Keep a stable ref to the heartbeat reducer so the geolocation effect
-  // doesn't tear down/recreate on every render.
+  // ── Live location stream (unchanged from the original client) ───────────────
   const beatRef = useRef(heartbeatLocation);
   beatRef.current = heartbeatLocation;
   const lastFixRef = useRef<{ lat: number; lng: number } | null>(null);
 
-  // Stream live location once joined. We refresh our fix from watchPosition AND
-  // re-send it on a fixed interval — so presence stays fresh, huddles stay alive,
-  // and the activity heatmap keeps building even while you're standing still.
   useEffect(() => {
     if (!joined) return;
 
@@ -70,9 +101,9 @@ function App() {
     const apply = (lat: number, lng: number, live: boolean) => {
       const first = lastFixRef.current === null;
       lastFixRef.current = { lat, lng };
-      setMyLoc([lat, lng]);
+      setMyLoc({ lat, lng });
       setGeo(live ? 'live' : 'demo');
-      if (first) beat(); // send immediately on the first fix, don't wait for the tick
+      if (first) beat();
     };
 
     let watchId: number | null = null;
@@ -91,7 +122,6 @@ function App() {
       );
     }
 
-    // Steady heartbeat: keeps heat accumulating + presence fresh when stationary.
     const interval = setInterval(beat, 3000);
     return () => {
       clearInterval(interval);
@@ -99,22 +129,27 @@ function App() {
     };
   }, [joined]);
 
-  // Merge co-located people into one avatar (Zenly/Snap-Map): each non-ended huddle
-  // with 2+ active members → one merged marker at its centroid; everyone else with a
-  // live fix → a solo marker.
-  const avatars = useMemo<Avatar[]>(() => {
-    if (myRoomId === undefined) return [];
-    const membersByHuddle = new Map<string, string[]>();
-    for (const m of members) {
-      if (m.leftAt != null) continue;
-      const k = m.huddleId.toString();
-      const list = membersByHuddle.get(k) ?? [];
-      list.push(m.identity.toHexString());
-      membersByHuddle.set(k, list);
-    }
+  // ── Derived live view-models ────────────────────────────────────────────────
 
-    const out: Avatar[] = [];
+  // Active (not-left) members per huddle → identity hexes.
+  const membersByHuddle = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const mem of members) {
+      if (mem.leftAt != null) continue;
+      const k = mem.huddleId.toString();
+      const list = m.get(k) ?? [];
+      list.push(mem.identity.toHexString());
+      m.set(k, list);
+    }
+    return m;
+  }, [members]);
+
+  // Map avatars: merged huddle clusters (2+ active members) + solo people.
+  const avatars = useMemo<MapAvatar[]>(() => {
+    if (myRoomId === undefined) return [];
+    const out: MapAvatar[] = [];
     const mergedHexes = new Set<string>();
+
     for (const h of huddles) {
       if (h.roomId !== myRoomId || h.status === 'ended') continue;
       const hexes = membersByHuddle.get(h.id.toString()) ?? [];
@@ -128,6 +163,8 @@ function App() {
         count: hexes.length,
         isMe: myHex ? hexes.includes(myHex) : false,
         merged: true,
+        heat: h.warmth,
+        selection: { kind: 'huddle', id: h.id.toString() },
       });
     }
 
@@ -143,10 +180,12 @@ function App() {
         count: 1,
         isMe: hex === myHex,
         merged: false,
+        heat: 0,
+        selection: { kind: 'friend', id: hex },
       });
     }
     return out;
-  }, [huddles, members, presence, myRoomId, nameByHex, myHex]);
+  }, [huddles, presence, membersByHuddle, myRoomId, nameByHex, myHex]);
 
   const heat = useMemo<HeatPoint[]>(
     () =>
@@ -156,51 +195,153 @@ function App() {
     [heatCells, myRoomId]
   );
 
-  const nearbyCount = useMemo(
-    () =>
-      presence.filter(
-        (p) =>
-          myRoomId !== undefined &&
-          p.roomId === myRoomId &&
-          p.status === 'active' &&
-          p.hasFix &&
-          p.identity.toHexString() !== myHex
-      ).length,
-    [presence, myRoomId, myHex]
-  );
+  const friends = useMemo<FriendVM[]>(() => {
+    if (myRoomId === undefined) return [];
+    return presence
+      .filter((p) => p.roomId === myRoomId && p.identity.toHexString() !== myHex && p.status !== 'offline')
+      .map((p) => ({
+        key: p.identity.toHexString(),
+        name: nameByHex.get(p.identity.toHexString()) ?? 'Someone',
+        online: p.status === 'active',
+        lastSeenMicros: p.lastSeen.microsSinceUnixEpoch,
+        distanceMeters:
+          myLoc && p.hasFix ? distanceMeters(myLoc.lat, myLoc.lng, p.lat, p.lng) : null,
+      }));
+  }, [presence, myRoomId, myHex, nameByHex, myLoc]);
 
-  const board = useMemo(
-    () =>
-      scores
-        .filter((s) => myRoomId !== undefined && s.roomId === myRoomId)
-        .sort((a, b) => b.warmthPoints - a.warmthPoints),
-    [scores, myRoomId]
-  );
+  const huddleList = useMemo<HuddleVM[]>(() => {
+    if (myRoomId === undefined) return [];
+    return huddles
+      .filter((h) => h.roomId === myRoomId && h.status !== 'ended')
+      .map((h) => {
+        const hexes = membersByHuddle.get(h.id.toString()) ?? [];
+        return {
+          id: h.id.toString(),
+          status: h.status,
+          memberCount: hexes.length || h.memberCount,
+          warmth: h.warmth,
+          lat: h.lat,
+          lng: h.lng,
+          memberNames: hexes.map((x) => nameByHex.get(x) ?? 'Someone'),
+          includesMe: myHex ? hexes.includes(myHex) : false,
+          distanceMeters: myLoc ? distanceMeters(myLoc.lat, myLoc.lng, h.lat, h.lng) : null,
+        };
+      })
+      .sort((a, b) => b.warmth - a.warmth);
+  }, [huddles, membersByHuddle, myRoomId, nameByHex, myHex, myLoc]);
 
-  const myScore = useMemo(() => board.find((s) => s.identity.toHexString() === myHex), [board, myHex]);
+  const activityFeed = useMemo<EventVM[]>(() => {
+    if (myRoomId === undefined) return [];
+    return events
+      .filter((e) => e.roomId === myRoomId)
+      .sort((a, b) => (a.createdAt.microsSinceUnixEpoch < b.createdAt.microsSinceUnixEpoch ? 1 : -1))
+      .slice(0, 60)
+      .map((e) => ({
+        id: e.id.toString(),
+        type: e.type,
+        message: e.message,
+        micros: e.createdAt.microsSinceUnixEpoch,
+      }));
+  }, [events, myRoomId]);
+
+  const board = useMemo<ScoreVM[]>(() => {
+    if (myRoomId === undefined) return [];
+    return scores
+      .filter((s) => s.roomId === myRoomId)
+      .sort((a, b) => b.warmthPoints - a.warmthPoints)
+      .map((s) => ({
+        key: s.identity.toHexString(),
+        name: nameByHex.get(s.identity.toHexString()) ?? 'Someone',
+        warmthPoints: s.warmthPoints,
+        huddlesJoined: s.huddlesJoined,
+        isMe: s.identity.toHexString() === myHex,
+      }));
+  }, [scores, myRoomId, nameByHex, myHex]);
+
+  const myScore = useMemo(() => board.find((s) => s.isMe), [board]);
+
+  const nearbyCount = friends.filter((f) => f.online).length;
+  const formingCount = huddleList.filter((h) => h.status === 'candidate').length;
+  const activeHuddles = huddleList.filter((h) => h.status === 'active').length;
+
+  const me = useMemo<MeVM>(
+    () => ({
+      key: myHex ?? '',
+      name: (myHex && nameByHex.get(myHex)) || nameInput || 'You',
+      roomName: myRoom?.name ?? 'Huddle',
+      roomCode: myRoom?.code ?? '',
+      warmthPoints: myScore?.warmthPoints ?? 0,
+      huddlesJoined: myScore?.huddlesJoined ?? 0,
+    }),
+    [myHex, nameByHex, nameInput, myRoom, myScore]
+  );
 
   useEffect(() => {
     if (!nameInput && myHex && nameByHex.has(myHex)) setNameInput(nameByHex.get(myHex)!);
   }, [myHex, nameByHex, nameInput]);
 
-  // ── Connecting ──
+  // ── Handlers ────────────────────────────────────────────────────────────────
+  const onSelect = (s: Selection) => {
+    setSelection(s);
+    if (s) setSheetState('half');
+  };
+
+  const flyToSelection = (s: Exclude<Selection, null>) => {
+    if (s.kind === 'friend') {
+      const p = presence.find((x) => x.identity.toHexString() === s.id);
+      if (p && p.hasFix) mapControls.current?.flyTo(p.lat, p.lng);
+    } else if (s.kind === 'huddle') {
+      const h = huddles.find((x) => x.id.toString() === s.id);
+      if (h) mapControls.current?.flyTo(h.lat, h.lng);
+    } else if (s.kind === 'pin' && myLoc) {
+      const pin = getPin(s.id);
+      if (pin) mapControls.current?.flyTo(myLoc.lat + pin.dLat, myLoc.lng + pin.dLng);
+    }
+  };
+
+  const onPick = (s: Exclude<Selection, null>) => {
+    setSelection(s);
+    setSheetState('half');
+    flyToSelection(s);
+  };
+
+  const onFilter = (k: FilterKey) => {
+    setFilter(k);
+    setActiveLayers((prev) => ({ ...filterToLayers[k], warmth: prev.warmth }));
+  };
+
+  const onChangeLens = (l: Lens) => {
+    setLens(l);
+    setSelection(null);
+    setSheetState(l === 'map' ? 'peek' : 'half');
+  };
+
+  const onPing = () => {
+    pingNearby().catch(console.error);
+  };
+
+  // ── Connecting ──────────────────────────────────────────────────────────────
   if (!connected || !identity) {
     return (
-      <div className="screen center">
-        <div className="logo big float">🧊</div>
-        <p className="muted">Connecting…</p>
+      <div className="flex h-dvh flex-col items-center justify-center gap-4 bg-background px-6">
+        <HuddlesLogo />
+        <p className="text-sm text-muted-foreground">Connecting…</p>
       </div>
     );
   }
 
-  // ── Join ──
+  // ── Join ──────────────────────────────────────────────────────────────────────
   if (!joined) {
     return (
-      <div className="screen center onboarding">
-        <div className="logo big float">🧊</div>
-        <h1 className="title">Huddle</h1>
-        <p className="muted">Share your location. Gather nearby. Make warmth.</p>
+      <div className="flex h-dvh flex-col items-center justify-center gap-6 bg-background px-6">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <HuddlesLogo />
+          <p className="max-w-xs text-sm text-muted-foreground">
+            Share your location. Gather nearby. Make warmth.
+          </p>
+        </div>
         <form
+          className="flex w-full max-w-xs flex-col gap-3"
           onSubmit={(e) => {
             e.preventDefault();
             const name = nameInput.trim();
@@ -209,142 +350,72 @@ function App() {
             joinRoom({ name, roomCode }).catch(console.error);
           }}
         >
-          <input
+          <Input
             autoFocus
             placeholder="your name"
             value={nameInput}
             onChange={(e) => setNameInput(e.target.value)}
+            className="h-12 rounded-2xl"
           />
-          <input placeholder="room code" value={roomInput} onChange={(e) => setRoomInput(e.target.value)} />
-          <button type="submit" className="primary big">
+          <Input
+            placeholder="room code"
+            value={roomInput}
+            onChange={(e) => setRoomInput(e.target.value)}
+            className="h-12 rounded-2xl"
+          />
+          <Button type="submit" variant="brand" size="lg" className="h-12 text-base font-bold">
             Get Started
-          </button>
+          </Button>
         </form>
+        <p className="text-xs text-muted-foreground">
+          {geo === 'locating' ? 'Getting your location…' : 'We only use your location while you’re in a room.'}
+        </p>
       </div>
     );
   }
 
-  const otherUsers = users.filter((u) => u.identity.toHexString() !== myHex);
-
+  // ── Joined: the mobile social map ───────────────────────────────────────────
   return (
-    <div className="screen lobby">
-      <header className="lobby-head">
-        <div className="me">
-          <div style={{ width: 36, height: 36, borderRadius: '35%', background: 'linear-gradient(135deg, #E8F4FF, #F0F8FF)', border: '2px solid #6B8FFF', flex: 'none' }} />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 700, color: 'var(--text)', margin: 0, fontSize: '0.95rem' }}>{nameInput}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>{myRoom?.name ?? 'Huddle'}</div>
-          </div>
-        </div>
-        <button className="ghost" onClick={() => leaveRoom().catch(console.error)}>
-          Leave
-        </button>
-      </header>
+    <>
+      <MobileShell
+        lens={lens}
+        onChangeLens={onChangeLens}
+        selection={selection}
+        onSelect={onSelect}
+        sheetState={sheetState}
+        onSheetStateChange={setSheetState}
+        activeLayers={activeLayers}
+        filter={filter}
+        onFilter={onFilter}
+        onSearch={() => setShowSearch(true)}
+        onAdd={() => setShowAdd(true)}
+        onPing={() => setShowPing(true)}
+        onOpenProfile={() => setShowProfile(true)}
+        controlsRef={mapControls}
+        me={me}
+        avatars={avatars}
+        heat={heat}
+        myLoc={myLoc}
+        friends={friends}
+        huddles={huddleList}
+        events={activityFeed}
+        board={board}
+        nearbyCount={nearbyCount}
+        formingCount={formingCount}
+        activeHuddles={activeHuddles}
+        friendsOut={nearbyCount}
+      />
 
-      <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', paddingBottom: '80px' }}>
-
-      {tab === 'home' ? (
-        <>
-          <div style={{ padding: '16px', background: 'var(--card-bg)', borderRadius: '20px', margin: '16px', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)' }}>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
-              {geo === 'live' && '🟢 Sharing live location'}
-              {geo === 'demo' && '📡 Demo location'}
-              {geo === 'locating' && '📍 Getting location…'}
-            </div>
-            <div style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text)' }}>
-              {nearbyCount} {nearbyCount === 1 ? 'person' : 'people'} nearby
-            </div>
-          </div>
-
-          <div style={{ flex: 1, minHeight: 0, marginLeft: '16px', marginRight: '16px', marginBottom: '16px' }}>
-            <LiveMap avatars={avatars} heat={heat} myLoc={myLoc} />
-          </div>
-        </>
-      ) : tab === 'friends' ? (
-        <div style={{ gap: '12px', display: 'flex', flexDirection: 'column', padding: '16px' }}>
-          <div style={{ background: 'var(--card-bg)', borderRadius: '20px', padding: '16px', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)' }}>
-            <h2 style={{ margin: '0 0 12px', fontSize: '1.1rem', color: 'var(--text)' }}>Friends</h2>
-            {otherUsers.length === 0 ? (
-              <p className="muted">No friends in this room yet</p>
-            ) : (
-              <div className="list">
-                {otherUsers.map((u) => (
-                  <div key={u.identity.toHexString()} className="card">
-                    <div style={{ width: 36, height: 36, borderRadius: '35%', background: 'linear-gradient(135deg, #E8F4FF, #F0F8FF)', border: '2px solid #6B8FFF', flex: 'none' }} />
-                    <div className="card-main">
-                      <strong>{u.name}</strong>
-                      <span className="muted small">Online now</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      ) : tab === 'profile' ? (
-        <div style={{ gap: '16px', display: 'flex', flexDirection: 'column', padding: '16px' }}>
-          <div style={{ background: 'var(--card-bg)', borderRadius: '24px', padding: '24px', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)', textAlign: 'center' }}>
-            <div style={{ width: 100, height: 100, borderRadius: '35%', background: 'linear-gradient(135deg, #E8F4FF, #F0F8FF)', border: '3px solid #6B8FFF', margin: '0 auto 16px' }} />
-            <h2 style={{ margin: '0 0 4px', fontSize: '1.3rem', color: 'var(--text)' }}>{nameInput}</h2>
-            <p className="muted">{myRoom?.code}</p>
-          </div>
-
-          <div style={{ background: 'var(--card-bg)', borderRadius: '20px', padding: '16px', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)' }}>
-            <h3 style={{ margin: '0 0 12px', fontSize: '0.95rem', color: 'var(--text)', fontWeight: 700 }}>Stats</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div style={{ background: 'var(--bg)', borderRadius: '16px', padding: '12px', textAlign: 'center' }}>
-                <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--blue)', margin: 0 }}>{myScore?.warmthPoints ?? 0}</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>Warmth Points</div>
-              </div>
-              <div style={{ background: 'var(--bg)', borderRadius: '16px', padding: '12px', textAlign: 'center' }}>
-                <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--blue)', margin: 0 }}>{myScore?.huddlesJoined ?? 0}</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>Huddles</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div style={{ gap: '12px', display: 'flex', flexDirection: 'column', padding: '16px' }}>
-          <h2 style={{ margin: '0 0 12px', fontSize: '1.1rem', color: 'var(--text)' }}>City Leaderboard</h2>
-          <div className="list">
-            {board.length === 0 && <p className="muted">No scores yet</p>}
-            {board.map((s, i) => {
-              const isMe = s.identity.toHexString() === myHex;
-              return (
-                <div key={s.id.toString()} className={'card' + (isMe ? ' rank' : '')}>
-                  <span className="rank-n">{i + 1}</span>
-                  <div className="card-main">
-                    <strong>{nameByHex.get(s.identity.toHexString()) ?? 'Someone'}</strong>
-                    <span className="muted small">{s.huddlesJoined} huddles</span>
-                  </div>
-                  <span className="warm-badge">{s.warmthPoints}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      </div>
-
-      <nav className="tabbar">
-        <button className={'tab' + (tab === 'home' ? ' active' : '')} onClick={() => setTab('home')}>
-          <div style={{ fontSize: '1.2rem' }}>🗺️</div>
-          <div>Home</div>
-        </button>
-        <button className={'tab' + (tab === 'friends' ? ' active' : '')} onClick={() => setTab('friends')}>
-          <div style={{ fontSize: '1.2rem' }}>👥</div>
-          <div>Friends</div>
-        </button>
-        <button className={'tab' + (tab === 'profile' ? ' active' : '')} onClick={() => setTab('profile')}>
-          <div style={{ fontSize: '1.2rem' }}>👤</div>
-          <div>Profile</div>
-        </button>
-        <button className={'tab' + (tab === 'leaderboard' ? ' active' : '')} onClick={() => setTab('leaderboard')}>
-          <div style={{ fontSize: '1.2rem' }}>⭐</div>
-          <div>Rankings</div>
-        </button>
-      </nav>
-    </div>
+      <PingSheet open={showPing} onOpenChange={setShowPing} friends={friends} onPing={onPing} />
+      <SearchModal open={showSearch} onOpenChange={setShowSearch} friends={friends} huddles={huddleList} onPick={onPick} />
+      <AddToMapSheet open={showAdd} onOpenChange={setShowAdd} />
+      <ProfileSettings
+        open={showProfile}
+        onOpenChange={setShowProfile}
+        me={me}
+        onLeave={() => leaveRoom().catch(console.error)}
+      />
+    </>
   );
 }
 
