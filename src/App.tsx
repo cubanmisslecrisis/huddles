@@ -182,20 +182,22 @@ function App() {
     <div className="screen lobby">
       <header className="lobby-head">
         <div className="me">
-          <div style={{ width: 36, height: 36, borderRadius: '35%', background: 'linear-gradient(135deg, #E8F4FF, #F0F8FF)', border: '2px solid #6B8FFF' }} />
-          <div>
-            <div style={{ fontWeight: 700, color: 'var(--text)', margin: 0 }}>{nameInput}</div>
+          <div style={{ width: 36, height: 36, borderRadius: '35%', background: 'linear-gradient(135deg, #E8F4FF, #F0F8FF)', border: '2px solid #6B8FFF', flex: 'none' }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700, color: 'var(--text)', margin: 0, fontSize: '0.95rem' }}>{nameInput}</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>{myRoom?.name ?? 'Huddle'}</div>
           </div>
         </div>
-        <button className="ghost" style={{ fontSize: '0.85rem' }} onClick={() => leaveRoom().catch(console.error)}>
+        <button className="ghost" onClick={() => leaveRoom().catch(console.error)}>
           Leave
         </button>
       </header>
 
+      <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', paddingBottom: '80px' }}>
+
       {tab === 'home' ? (
         <>
-          <section style={{ background: 'var(--card-bg)', borderRadius: '20px', padding: '16px', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)', marginBottom: 0 }}>
+          <section style={{ background: 'var(--card-bg)', borderRadius: '20px', padding: '16px', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)', marginBottom: 0, margin: '16px' }}>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
               {geo === 'live' && '🟢 Sharing live location'}
               {geo === 'demo' && '📡 Demo location'}
@@ -209,7 +211,7 @@ function App() {
           <LiveMap users={userMarkers} huddles={huddleMarkers} myLoc={myLoc} />
         </>
       ) : tab === 'friends' ? (
-        <div style={{ gap: '12px', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ gap: '12px', display: 'flex', flexDirection: 'column', padding: '16px' }}>
           <div style={{ background: 'var(--card-bg)', borderRadius: '20px', padding: '16px', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)' }}>
             <h2 style={{ margin: '0 0 12px', fontSize: '1.1rem', color: 'var(--text)' }}>Friends</h2>
             {otherUsers.length === 0 ? (
@@ -230,7 +232,7 @@ function App() {
           </div>
         </div>
       ) : tab === 'profile' ? (
-        <div style={{ gap: '16px', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ gap: '16px', display: 'flex', flexDirection: 'column', padding: '16px' }}>
           <div style={{ background: 'var(--card-bg)', borderRadius: '24px', padding: '24px', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)', textAlign: 'center' }}>
             <div style={{ width: 100, height: 100, borderRadius: '35%', background: 'linear-gradient(135deg, #E8F4FF, #F0F8FF)', border: '3px solid #6B8FFF', margin: '0 auto 16px' }} />
             <h2 style={{ margin: '0 0 4px', fontSize: '1.3rem', color: 'var(--text)' }}>{nameInput}</h2>
@@ -252,8 +254,8 @@ function App() {
           </div>
         </div>
       ) : (
-        <div style={{ gap: '12px', display: 'flex', flexDirection: 'column' }}>
-          <h2 style={{ margin: '8px 0 12px', fontSize: '1.1rem', color: 'var(--text)' }}>City Leaderboard</h2>
+        <div style={{ gap: '12px', display: 'flex', flexDirection: 'column', padding: '16px' }}>
+          <h2 style={{ margin: '0 0 12px', fontSize: '1.1rem', color: 'var(--text)' }}>City Leaderboard</h2>
           <div className="list">
             {board.length === 0 && <p className="muted">No scores yet</p>}
             {board.map((s, i) => {
@@ -272,6 +274,7 @@ function App() {
           </div>
         </div>
       )}
+      </div>
 
       <nav className="tabbar">
         <button className={'tab' + (tab === 'home' ? ' active' : '')} onClick={() => setTab('home')}>
