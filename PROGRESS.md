@@ -4,14 +4,12 @@ Status tracker for the build. Legend: ✅ done · 🟡 partial · ⬜ not starte
 Model: **live GPS location on a map** (not tap-to-move zones — see the MODEL UPDATE
 banners in `PROJECT.md` / `HUDDLE_LOGIC.md` / `TECHNICAL_PLAN.md`).
 
-> **Big picture.** Backend pivoted to **real-time GPS + radius proximity** and is live on
-> `huddles-5eq44`: `presence` holds `lat`/`lng`/`has_fix`; movement is
-> `heartbeatLocation(lat,lng)`; proximity is haversine `≤ PROXIMITY_RADIUS_METERS` (100 m
-> demo); no `zone` table. **Part 1 (location + proximity) reducers are implemented and
-> verified on maincloud.** Open: **Part 2 huddle engine** (cluster nearby users → state
-> machine — all stubs) and the **client** (browser geolocation → `heartbeatLocation` + a
-> live map). `src/App.tsx` is currently **broken** (penguin/zone hybrid, ~18 tsc errors)
-> and must be rebuilt to the GPS model.
+> **Big picture.** Both Part 1 and Part 2 are now implemented and published to
+> `huddles-5eq44`. The huddle engine (`runHuddleEngine`) clusters fresh GPS users by
+> haversine radius, drives the `candidate → active → cooling → ended` state machine,
+> warms huddles on tick, awards score points, and decays warmth over time. Three
+> scheduled reducers (1s / 5s / 30s) run automatically. The client (`src/App.tsx`) is
+> already wired to the GPS model. **Remaining work: end-to-end smoke test + demo polish.**
 
 ---
 
@@ -20,48 +18,39 @@ banners in `PROJECT.md` / `HUDDLE_LOGIC.md` / `TECHNICAL_PLAN.md`).
 - **Tooling / env** — `npm install` done; `npm run dev` works.
 - **SpacetimeDB connection** — live as `huddles-5eq44`; `.env.local` + `spacetime.json`
   wired; client connects via `SpacetimeDBProvider` in `main.tsx`.
-- **Backend schema (live GPS)** — `spacetimedb/src/index.ts`: tables `user`, `room`,
-  `presence` (lat/lng/has_fix), `huddle` (lat/lng/warmth/member_count), `huddle_member`,
-  `event`, `score` + 3 scheduled timers (`huddle_tick`/`presence_tick`/`decay_tick`).
-  Published (`--delete-data`), `init` schedules the 1s/5s/30s ticks (verified).
+- **Backend schema (live GPS)** — tables `user`, `room`, `presence` (lat/lng/has_fix),
+  `huddle` (lat/lng/warmth/member_count/status), `huddle_member`, `event`, `score` +
+  3 scheduled timers (`huddle_tick` / `presence_tick` / `decay_tick`). Published and live.
 - **Part 1 reducers (verified on maincloud):** `joinRoom`, `heartbeatLocation(lat,lng)`,
-  `leaveRoom`, `pingNearby`, `onConnect`/`onDisconnect`, plus helpers `distanceMeters`
-  (haversine), `freshUsersNear` (radius), `emitEvent`. CLI smoke test passed:
-  join → heartbeat (sets lat/lng + has_fix) → ping → feed events all correct.
-- **Spec docs + conventions** — `PROJECT`/`HUDDLE_LOGIC`/`TECHNICAL_PLAN`/`WORK_SPLIT`/
-  `CLAUDE`/`AGENTS` carry the live-GPS MODEL UPDATE; `TECHNICAL_PLAN` has an authoritative
-  "Data Model (live GPS)" section.
-
-## In progress / blocked 🟡
-
-- **Part 2 huddle engine is stubbed** — `runHuddleEngine` / `huddleTick` /
-  `expireStalePresence` / `decayHuddles` are still `// TODO`, so huddles don't yet
-  form/warm/score and `presence` never goes stale. This is the remaining backend work.
-- **`src/HuddleMap.tsx` + `src/Profile.tsx`** — leftover penguin components, no longer
-  imported (the live map is the new `src/LiveMap.tsx`). Harmless; delete when convenient.
+  `leaveRoom`, `pingNearby`, `onConnect`/`onDisconnect`, helpers `distanceMeters`
+  (haversine), `freshUsersNear` (radius), `emitEvent`.
+- **Part 2 huddle engine (implemented + published):**
+  - `buildClusters` — greedy O(n²) proximity clustering of fresh presence rows
+  - `runHuddleEngine(ctx, roomId)` — full state machine: candidate → active → cooling → ended;
+    member sync (join/depart/refresh); warmth ticks; score points; event feed emissions
+  - `huddleTick` (1s scheduled) — drives engine for every active room
+  - `expireStalePresence` (5s scheduled) — marks stale users, triggers engine
+  - `decayHuddles` (30s scheduled) — decays huddle warmth toward 0
+- **Client (`src/App.tsx`)** — GPS model: `joinRoom` form, `watchPosition` → throttled
+  `heartbeatLocation`, presence markers, huddle warmth circles, event feed, scoreboard.
+- **`src/LiveMap.tsx`** — Leaflet dark map with user dot markers + huddle glow circles.
+- **`src/useGeolocation.ts`** — `watchPosition` hook with Midtown NYC fallback.
+- **Spec docs + conventions** — all context docs carry the live-GPS MODEL UPDATE.
 
 ## To do ⬜
 
-### Backend — Part 2 huddle engine (`spacetimedb/src/index.ts`)
-- ⬜ `runHuddleEngine(roomId)` — cluster fresh users (within `PROXIMITY_RADIUS_METERS`) →
-  candidate → active → cooling → ended (`HUDDLE_LOGIC.md`); set huddle centroid lat/lng,
-  warm + score active huddles.
-- ⬜ `huddleTick` (drive engine), `expireStalePresence` (stale → cool), `decayHuddles`
-  (warmth decay).
+### Demo & smoke test
+- ⬜ Two-client end-to-end smoke test: join same room → share location → candidate forms →
+  activates after 10s → warmth ticks → separation cools → ends.
+- ⬜ Check `spacetime logs huddles-5eq44 -f` for reducer errors after joining.
+- ⬜ Bot mode (simulated movers calling `heartbeatLocation` on an interval).
 
-### Frontend — client rebuild (`src/App.tsx` + map)
-- ⬜ Join screen → `joinRoom`.
-- ⬜ **Geolocation:** `navigator.geolocation.watchPosition` → throttled `heartbeatLocation(lat,lng)`.
-- ⬜ **Live map:** plot `presence` markers (live) + `huddle` warmth circles at their centroids.
-- ⬜ Subscribe to room-scoped tables; status panel (your huddle: forming/active/cooling).
-- ⬜ Event feed (newest first) + scoreboard.
-- ⬜ "Ping nearby" button → `pingNearby`.
-
-### Demo & polish
-- ⬜ Bot mode (simulated movers calling `heartbeatLocation`).
-- ⬜ Two-client end-to-end demo (both share a location → huddle forms/warms/cools).
-- ⬜ Purge remaining zone/tap-to-move prose from the spec docs (banners cover it for now);
-  update README (still says "quickstart-chat").
+### Polish
+- ⬜ Huddle status panel on client (show "forming…" / "active 🔥" / "cooling ❄️" for
+  the huddle the current user is in).
+- ⬜ Purge leftover zone/tap-to-move prose from spec docs (MODEL UPDATE banners cover it).
+- ⬜ Update README (still says "quickstart-chat").
+- ⬜ Delete dead files: `src/HuddleMap.tsx`, `src/Profile.tsx`.
 
 ---
 
