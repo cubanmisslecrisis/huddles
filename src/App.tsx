@@ -197,7 +197,7 @@ function App() {
 
       {tab === 'home' ? (
         <>
-          <section style={{ background: 'var(--card-bg)', borderRadius: '20px', padding: '16px', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)', marginBottom: 0, margin: '16px' }}>
+          <div style={{ padding: '16px', background: 'var(--card-bg)', borderRadius: '20px', margin: '16px', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)' }}>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
               {geo === 'live' && '🟢 Sharing live location'}
               {geo === 'demo' && '📡 Demo location'}
@@ -206,9 +206,11 @@ function App() {
             <div style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text)' }}>
               {nearbyCount} {nearbyCount === 1 ? 'person' : 'people'} nearby
             </div>
-          </section>
+          </div>
 
-          <LiveMap users={userMarkers} huddles={huddleMarkers} myLoc={myLoc} />
+          <div style={{ flex: 1, minHeight: 0, marginX: '16px', marginBottom: '16px' }}>
+            <LiveMap users={userMarkers} huddles={huddleMarkers} myLoc={myLoc} />
+          </div>
         </>
       ) : tab === 'friends' ? (
         <div style={{ gap: '12px', display: 'flex', flexDirection: 'column', padding: '16px' }}>
