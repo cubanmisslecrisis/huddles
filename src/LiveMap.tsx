@@ -22,7 +22,15 @@ export type HuddleMarker = {
 
 const FALLBACK: [number, number] = [40.7484, -73.9857]; // ~Midtown NYC
 
-const PALETTE = ['#7FD1FF', '#FFB3C7', '#FFE08A', '#B5E8A0', '#C9B6FF', '#FFC09A', '#9AE6D0', '#FF9AA2'];
+const PALETTE = [
+  '#6B8FFF', '#FF6B9D', '#FFC93C', '#6BCB77', '#4D96FF',
+  '#FF8A80', '#64B5F6', '#81C784', '#FFD54F', '#BA68C8'
+];
+
+const HUDDLE_COLORS = [
+  '#FF6B9D', '#FFC93C', '#6BCB77', '#4D96FF',
+  '#FF8A80', '#64B5F6', '#FFD54F', '#BA68C8'
+];
 
 function colorFor(hex: string): string {
   let h = 0;
@@ -30,29 +38,47 @@ function colorFor(hex: string): string {
   return PALETTE[h % PALETTE.length];
 }
 
+function huddleColorFor(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return HUDDLE_COLORS[h % HUDDLE_COLORS.length];
+}
+
 function userIcon(u: UserMarker): L.DivIcon {
-  const color = u.isMe ? '#7FD1FF' : colorFor(u.hex);
+  const color = u.isMe ? '#6B8FFF' : colorFor(u.hex);
   const initial = (u.name || '?').slice(0, 1).toUpperCase();
-  const ring = u.isMe ? 'box-shadow:0 0 0 3px rgba(127,209,255,0.5),0 0 14px rgba(127,209,255,0.7);' : '';
+  const ring = u.isMe
+    ? 'box-shadow:0 0 0 4px rgba(107,143,255,0.4),0 0 16px rgba(107,143,255,0.6);'
+    : 'box-shadow:0 2px 8px rgba(0,0,0,0.15);';
   return L.divIcon({
     className: 'live-marker',
     html: `<div class="live-dot" style="background:${color};${ring}">${initial}</div>
            <div class="live-name">${u.name}${u.isMe ? ' (you)' : ''}</div>`,
-    iconSize: [36, 36],
-    iconAnchor: [18, 18],
+    iconSize: [40, 48],
+    iconAnchor: [20, 48],
   });
 }
 
 function huddleIcon(h: HuddleMarker): L.DivIcon {
-  const r = 22 + Math.min(26, h.warmth / 30);
-  const glow = h.active ? 'box-shadow:0 0 22px rgba(255,140,70,0.7);' : '';
+  const baseRadius = 18;
+  const warmthBonus = Math.min(22, h.warmth / 25);
+  const radius = baseRadius + warmthBonus;
+  const diameter = radius * 2;
+
+  const color = huddleColorFor(h.id);
+  const glow = h.active
+    ? `box-shadow:0 0 0 3px ${color}40,0 0 24px ${color}60;`
+    : `box-shadow:0 4px 12px rgba(0,0,0,0.15);`;
+
+  const pulse = h.active ? 'style="animation: pulse-huddle 2s ease-in-out infinite;"' : '';
+
   return L.divIcon({
     className: 'huddle-glow-marker',
-    html: `<div class="huddle-glow ${h.active ? 'active' : ''}" style="width:${r * 2}px;height:${r * 2}px;${glow}">
-             <span>${h.memberCount}🔥</span>
+    html: `<div class="huddle-icon ${h.active ? 'active' : ''}" style="width:${diameter}px;height:${diameter}px;background:${color};border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:0.95rem;${glow}${pulse}">
+             <span>${h.memberCount}</span>
            </div>`,
-    iconSize: [r * 2, r * 2],
-    iconAnchor: [r, r],
+    iconSize: [diameter, diameter],
+    iconAnchor: [radius, radius],
   });
 }
 
@@ -89,7 +115,7 @@ export default function LiveMap({
       <MapContainer center={center} zoom={13} scrollWheelZoom style={{ height: '100%', width: '100%' }}>
         <TileLayer
           attribution="&copy; OpenStreetMap, &copy; CARTO"
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          url="https://{s}.basemaps.cartocdn.com/positron/{z}/{x}/{y}{r}.png"
         />
         <Recenter focus={myLoc} />
         {huddles.map((h) => (

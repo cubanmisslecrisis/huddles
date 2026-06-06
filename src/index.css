@@ -1,5 +1,13 @@
 :root {
-  color-scheme: dark;
+  color-scheme: light;
+  --blue: #6B8FFF;
+  --blue-light: #8BA3FF;
+  --blue-dark: #4A6FD8;
+  --bg: #F5F7FF;
+  --card-bg: #FFFFFF;
+  --text: #1A1F3A;
+  --text-muted: #7B8BA8;
+  --border: #E8EBF5;
 }
 
 *,
@@ -12,9 +20,8 @@ html, body, #root { height: 100%; margin: 0; }
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  background: radial-gradient(1200px 800px at 50% -10%, #1b2a4a 0%, #0b1220 55%, #070b14 100%);
-  background-attachment: fixed;
-  color: #eaf1ff;
+  background: var(--bg);
+  color: var(--text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
