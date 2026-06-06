@@ -6,15 +6,13 @@
 import { type Infer as __Infer } from "spacetimedb";
 
 // Import all reducer arg schemas
-import CreateHuddleReducer from "../create_huddle_reducer";
-import EndHuddleReducer from "../end_huddle_reducer";
-import JoinHuddleReducer from "../join_huddle_reducer";
-import LeaveHuddleReducer from "../leave_huddle_reducer";
-import SetProfileReducer from "../set_profile_reducer";
+import HeartbeatLocationReducer from "../heartbeat_location_reducer";
+import JoinRoomReducer from "../join_room_reducer";
+import LeaveRoomReducer from "../leave_room_reducer";
+import PingNearbyReducer from "../ping_nearby_reducer";
 
-export type CreateHuddleParams = __Infer<typeof CreateHuddleReducer>;
-export type EndHuddleParams = __Infer<typeof EndHuddleReducer>;
-export type JoinHuddleParams = __Infer<typeof JoinHuddleReducer>;
-export type LeaveHuddleParams = __Infer<typeof LeaveHuddleReducer>;
-export type SetProfileParams = __Infer<typeof SetProfileReducer>;
+export type HeartbeatLocationParams = __Infer<typeof HeartbeatLocationReducer>;
+export type JoinRoomParams = __Infer<typeof JoinRoomReducer>;
+export type LeaveRoomParams = __Infer<typeof LeaveRoomReducer>;
+export type PingNearbyParams = __Infer<typeof PingNearbyReducer>;
 

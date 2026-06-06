@@ -1,6 +1,6 @@
 # Huddles
 
-**Huddles turns physical proximity into a shared social world state.** Users join a room and move between zones; when 2+ users stay together long enough, the *server* forms a huddle that warms the zone and scores its members. The client only reports "I am here" — SpacetimeDB owns all huddle logic.
+**Huddles turns physical proximity into a shared social world state.** Users join a room and **stream their live GPS location** (`heartbeatLocation(lat,lng)`); when 2+ users are within `PROXIMITY_RADIUS_METERS` of each other, the *server* forms a huddle that warms and scores its members, shown on a **live map**. The client only reports "here is my location" — SpacetimeDB owns all huddle logic. (Earlier drafts used tap-to-move fake zones; that's been replaced by live location — see the MODEL UPDATE banners in the spec docs.)
 
 ## Spec Docs — read these first
 
@@ -44,6 +44,23 @@ The Markdown context files are living documents, not write-once artifacts. Treat
 - **`CLAUDE.md` / `AGENTS.md`** — when a new convention emerges, add it here. **These two files must stay identical** — after editing one, copy it to the other (`cp CLAUDE.md AGENTS.md`).
 
 Rule of thumb: if a change would make any context doc wrong, fix the doc in the same turn.
+
+## Sync before every change (git)
+
+Multiple people edit the same files (notably `spacetimedb/src/index.ts`, where Part 1 and
+Part 2 share one file). To avoid clobbering each other:
+
+- **Pull before you start any fix:** `git pull --rebase` (or pull) so you're working on top
+  of everyone else's latest, not a stale copy.
+- **Push as soon as the fix is done and builds:** commit + `git push` immediately — don't
+  sit on local changes. Small, frequent pushes beat large divergent ones.
+- **Re-pull after publishing the module** (`spacetime publish` / `generate`) so regenerated
+  `src/module_bindings/` lands for everyone.
+- If a teammate's change surprises you (a file looks different than you left it), pull and
+  re-read before editing rather than overwriting.
+
+> Note: the repo is not yet under git. Run `git init`, add a remote, and commit the current
+> state once so this workflow applies.
 
 ---
 

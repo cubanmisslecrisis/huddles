@@ -11,16 +11,11 @@ import {
 } from "spacetimedb";
 
 export default __t.row({
-  id: __t.u64().primaryKey(),
+  identity: __t.identity().primaryKey(),
   roomId: __t.u64().name("room_id"),
   lat: __t.f64(),
   lng: __t.f64(),
+  hasFix: __t.bool().name("has_fix"),
+  lastSeen: __t.timestamp().name("last_seen"),
   status: __t.string(),
-  candidateStartedAt: __t.timestamp().name("candidate_started_at"),
-  activatedAt: __t.option(__t.timestamp()).name("activated_at"),
-  coolingStartedAt: __t.option(__t.timestamp()).name("cooling_started_at"),
-  endedAt: __t.option(__t.timestamp()).name("ended_at"),
-  warmth: __t.f64(),
-  memberCount: __t.u32().name("member_count"),
-  lastWarmthTickAt: __t.timestamp().name("last_warmth_tick_at"),
 });

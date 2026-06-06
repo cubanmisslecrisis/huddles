@@ -1,5 +1,11 @@
 # WORK_SPLIT.md — Who Builds What
 
+> ⚠️ **MODEL UPDATE — live GPS.** Part 1 = **live location input + radius proximity**
+> (`heartbeatLocation(lat,lng)` writes `presence.lat/lng`; `freshUsersNear` = haversine
+> `≤ PROXIMITY_RADIUS_METERS`). Part 2 = **huddling** (cluster nearby users → state
+> machine). The seam is still `presence`; just lat/lng instead of `zoneId`. Ignore
+> "tap-to-move / zones" wording below.
+
 How the Huddles backend rebuild is divided so two people work in parallel without
 colliding. Design lives in `HUDDLE_LOGIC.md` / `TECHNICAL_PLAN.md`; status in `PROGRESS.md`.
 
@@ -13,22 +19,36 @@ colliding. Design lives in `HUDDLE_LOGIC.md` / `TECHNICAL_PLAN.md`; status in `P
 
 ## Step 0 — Shared first, together (~15 min, blocks everyone)
 
-1. Lock the **table definitions + reducer signatures** in `spacetimedb/src/index.ts`
-   (shapes only, empty bodies) — see the data model in `TECHNICAL_PLAN.md`.
-2. Publish once (`npm run spacetime:publish`, `--delete-data` — breaking change from the
-   chat starter) and run `npm run spacetime:generate`.
-3. Now `src/module_bindings/` has real types → both tracks (and any UI work) build against
-   them immediately.
+**✅ DONE** — the schema + reducer signatures are locked, published to `huddles-5eq44`,
+and bindings are regenerated. Both tracks can start now against real types.
 
-Suggested file layout to avoid merge conflicts:
+What landed:
+1. `spacetimedb/src/index.ts` holds the 8 spec tables + 3 scheduled timer tables + reducer
+   signatures with **stub bodies** (`// TODO (Part N)`).
+2. Published with `spacetime publish huddles-5eq44 --server maincloud --delete-data=always`
+   (breaking change; old data wiped) and `init` schedules the three ticks (1s/5s/30s).
+3. `src/module_bindings/` regenerated: `tables.user/room/zone/presence/huddle/...`,
+   `reducers.joinRoom/moveToZone/leaveRoom/pingNearby`.
+
+**File layout — single file, sectioned (not separate files).** Splitting into
+`tables.ts` / `presence.ts` / `huddle.ts` is blocked by a circular import: scheduled
+tables reference their reducers, and those reducers reference the tables, so cross-file
+the references dead-lock at module-eval. So everything lives in one `index.ts` with
+clearly-labeled sections instead:
 
 ```
-spacetimedb/src/
-  index.ts       # schema export + lifecycle; imports the below
-  tables.ts      # all table defs + constants block      (Part 1 owns)
-  presence.ts    # joinRoom / moveToZone / leaveRoom / freshUsersNear / pingNearby  (Part 1)
-  huddle.ts      # updateHuddles + scheduled reducers     (Part 2 owns)
+spacetimedb/src/index.ts
+  // CONSTANTS
+  // PART 1 — location input + proximity   (tables: user/room/zone/presence; Part 1 owns)
+  // PART 2 — huddling                      (tables: huddle/member/event/score + timers; Part 2 owns)
+  // PART 1 REDUCERS                         (joinRoom / moveToZone / leaveRoom / pingNearby)
+  // PART 2 ENGINE + SCHEDULED REDUCERS      (runHuddleEngine + huddleTick/expireStalePresence/decayZones)
+  // LIFECYCLE                               (init / onConnect / onDisconnect)
 ```
+
+Each owner edits only their labeled sections → minimal merge friction. Re-run
+`spacetime generate --lang typescript --out-dir src/module_bindings --module-path spacetimedb --yes`
+after any schema change.
 
 ---
 
@@ -99,8 +119,8 @@ fully independent of Part 1's reducers working.
 
 | Track | Scope | Suggested owner |
 |-------|-------|-----------------|
-| Part 1 | location input + proximity (`tables.ts`, `presence.ts`) | — |
-| Part 2 | huddling engine + scheduling (`huddle.ts`) | Kevin (+ backend helper) |
+| Part 1 | location input + proximity (`index.ts` PART 1 sections) | — |
+| Part 2 | huddling engine + scheduling (`index.ts` PART 2 sections) | Kevin (+ backend helper) |
 | (UI) | React client in `src/` — subscribes + renders, calls reducers, never owns logic | strongest React dev |
 
 If a third person takes UI, this becomes the 3-way split; with two backend people, Parts

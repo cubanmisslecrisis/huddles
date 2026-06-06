@@ -1,216 +1,421 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Huddle — SpacetimeDB module
+// Huddles SpacetimeDB module — LIVE GPS model
 //
-// Friends form live "huddles". Like penguins huddling for warmth, a bigger and
-// longer huddle generates more "warmth" in real time (a 1s scheduled tick),
-// which drives a shared map of warmed places and a live leaderboard.
+// Clients stream their real location (`heartbeatLocation(lat,lng)`); the server
+// stores it in `presence` and decides huddles by GEOGRAPHIC PROXIMITY (users within
+// PROXIMITY_RADIUS_METERS of each other), not by tapping a fixed zone.
+//
+//   • Part 1 owns the `PART 1` section: user/room/presence + joinRoom /
+//     heartbeatLocation / leaveRoom / pingNearby. It WRITES the `presence` table
+//     (lat/lng) and exposes the `freshUsersNear` radius primitive.
+//   • Part 2 owns the `PART 2` section: huddle/huddle_member/event/score + the
+//     scheduled engine (huddleTick / expireStalePresence / decayHuddles). It READS
+//     `presence`, clusters nearby users, and runs the huddle state machine.
+//
+// See HUDDLE_LOGIC.md for the rules and TECHNICAL_PLAN.md for the data model.
 // ─────────────────────────────────────────────────────────────────────────────
-import { schema, t, table, SenderError } from 'spacetimedb/server';
+import { schema, table, t, SenderError } from 'spacetimedb/server';
 import { ScheduleAt } from 'spacetimedb';
 
-// Warmth added per member, per tick (the tick fires once per second — see `init`).
-const WARMTH_PER_MEMBER_PER_TICK = 1.0;
+// ═════════════════════════════════════════════════════════════════════════════
+// CONSTANTS  (hackathon demo values — see HUDDLE_LOGIC.md "Constants")
+// ═════════════════════════════════════════════════════════════════════════════
+const MIN_USERS_FOR_HUDDLE = 2;
+const PROXIMITY_RADIUS_METERS = 100; // two users this close count as "together"
+const DWELL_THRESHOLD_SECONDS = 10;
+const WARMTH_TICK_SECONDS = 5;
+const COOLING_THRESHOLD_SECONDS = 10;
+const PRESENCE_STALE_SECONDS = 15;
+const WARMTH_PER_TICK = 5;
+const POINTS_PER_TICK = 5;
+const DECAY_INTERVAL_SECONDS = 30;
+const DECAY_AMOUNT = 2;
 
-// Penguin avatar colors, assigned on first connect.
-const PALETTE = [
-  '#7FD1FF', '#FFB3C7', '#FFE08A', '#B5E8A0',
-  '#C9B6FF', '#FFC09A', '#9AE6D0', '#FF9AA2',
-];
+// Scheduled tick cadences, in microseconds.
+const HUDDLE_TICK_MICROS = 1_000_000n; // 1s — runs the huddle state machine
+const PRESENCE_TICK_MICROS = 5_000_000n; // 5s — expire stale presence
+const DECAY_TICK_MICROS = 30_000_000n; // 30s — cool huddle warmth
 
-// ── Tables ──────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// PART 1 — location input + proximity (Part 1 owner edits below)
+// ═════════════════════════════════════════════════════════════════════════════
 
-const player = table(
-  { name: 'player', public: true },
+// A participant. Keyed by Identity (ctx.sender) — never a client-passed id.
+const user = table(
+  { name: 'user', public: true },
   {
     identity: t.identity().primaryKey(),
-    name: t.string().optional(),
-    penguin_color: t.string(),
-    online: t.bool(),
+    name: t.string(),
+    createdAt: t.timestamp(),
   }
 );
 
+// A multiplayer session. Default code "demo".
+const room = table(
+  { name: 'room', public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    code: t.string().unique(),
+    name: t.string(),
+    createdAt: t.timestamp(),
+  }
+);
+
+// Where a user currently is — their LIVE GPS fix. THIS is the Part 1 ↔ Part 2
+// contract: Part 1 writes it, Part 2 reads it. status ∈ active | stale | offline.
+// hasFix is false until the first real geolocation reading arrives.
+const presence = table(
+  { name: 'presence', public: true },
+  {
+    identity: t.identity().primaryKey(),
+    roomId: t.u64().index('btree'),
+    lat: t.f64(),
+    lng: t.f64(),
+    hasFix: t.bool(),
+    lastSeen: t.timestamp(),
+    status: t.string(),
+  }
+);
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PART 2 — huddling (Part 2 owner edits below)
+// ═════════════════════════════════════════════════════════════════════════════
+
+// Canonical huddle state. Located at the cluster centroid (lat/lng) so the map can
+// draw it. status ∈ candidate | active | cooling | ended.
 const huddle = table(
   { name: 'huddle', public: true },
   {
     id: t.u64().primaryKey().autoInc(),
-    name: t.string(),
-    created_by: t.identity(),
-    created_at: t.timestamp(),
+    roomId: t.u64().index('btree'),
     lat: t.f64(),
     lng: t.f64(),
-    place_label: t.string(),
+    status: t.string(),
+    candidateStartedAt: t.timestamp(),
+    activatedAt: t.option(t.timestamp()),
+    coolingStartedAt: t.option(t.timestamp()),
+    endedAt: t.option(t.timestamp()),
     warmth: t.f64(),
-    member_count: t.u32(),
-    active: t.bool(),
+    memberCount: t.u32(),
+    lastWarmthTickAt: t.timestamp(),
   }
 );
 
+// Huddle participants, keyed by Identity.
 const huddleMember = table(
   { name: 'huddle_member', public: true },
   {
     id: t.u64().primaryKey().autoInc(),
-    huddle_id: t.u64().index('btree'),
+    huddleId: t.u64().index('btree'),
     identity: t.identity(),
-    joined_at: t.timestamp(),
+    joinedAt: t.timestamp(),
+    lastSeenInHuddle: t.timestamp(),
+    leftAt: t.option(t.timestamp()),
   }
 );
 
-// Scheduled table that drives the warmth tick. `(): any => tick` defers the
-// reference so the table and the reducer can refer to each other.
-const warmthTimer = table(
-  { name: 'warmth_timer', scheduled: (): any => tick },
+// The live event feed — persisted (so the UI can render history).
+const event = table(
+  { name: 'event', public: true },
   {
-    scheduled_id: t.u64().primaryKey().autoInc(),
-    scheduled_at: t.scheduleAt(),
+    id: t.u64().primaryKey().autoInc(),
+    roomId: t.u64().index('btree'),
+    type: t.string(),
+    message: t.string(),
+    huddleId: t.option(t.u64()),
+    lat: t.option(t.f64()),
+    lng: t.option(t.f64()),
+    createdAt: t.timestamp(),
   }
 );
 
-const spacetimedb = schema({ player, huddle, huddleMember, warmthTimer });
+// Per-user, per-room score.
+const score = table(
+  {
+    name: 'score',
+    public: true,
+    indexes: [{ accessor: 'by_room_user', algorithm: 'btree', columns: ['roomId', 'identity'] }],
+  },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    roomId: t.u64(),
+    identity: t.identity(),
+    warmthPoints: t.u32(),
+    huddlesJoined: t.u32(),
+    totalHuddleTime: t.u64(),
+  }
+);
+
+// Scheduled tables (the clock). Each targets a reducer below via a lazy thunk.
+const huddleTickTimer = table(
+  { name: 'huddle_tick_timer', scheduled: (): any => huddleTick },
+  { scheduledId: t.u64().primaryKey().autoInc(), scheduledAt: t.scheduleAt() }
+);
+
+const presenceTickTimer = table(
+  { name: 'presence_tick_timer', scheduled: (): any => expireStalePresence },
+  { scheduledId: t.u64().primaryKey().autoInc(), scheduledAt: t.scheduleAt() }
+);
+
+const decayTickTimer = table(
+  { name: 'decay_tick_timer', scheduled: (): any => decayHuddles },
+  { scheduledId: t.u64().primaryKey().autoInc(), scheduledAt: t.scheduleAt() }
+);
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SCHEMA
+// ═════════════════════════════════════════════════════════════════════════════
+const spacetimedb = schema({
+  // Part 1
+  user,
+  room,
+  presence,
+  // Part 2
+  huddle,
+  huddleMember,
+  event,
+  score,
+  // scheduled
+  huddleTickTimer,
+  presenceTickTimer,
+  decayTickTimer,
+});
 export default spacetimedb;
 
-// ── Lifecycle ─────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// SHARED HELPERS  (used by Part 1 and Part 2)
+// ═════════════════════════════════════════════════════════════════════════════
 
-// Runs once when the module is first published. Start the repeating warmth tick.
-export const init = spacetimedb.init((ctx) => {
-  // 1_000_000 microseconds = 1 second.
-  ctx.db.warmthTimer.insert({
-    scheduled_id: 0n,
-    scheduled_at: ScheduleAt.interval(1_000_000n),
+// A presence is "fresh" if last seen within this many microseconds.
+const STALE_MICROS = BigInt(PRESENCE_STALE_SECONDS) * 1_000_000n;
+
+// Deterministic "now" inside a reducer, in micros since the unix epoch.
+function nowMicros(ctx: any): bigint {
+  return ctx.timestamp.microsSinceUnixEpoch;
+}
+
+// Great-circle distance between two lat/lng points, in meters (haversine).
+// Math.* is deterministic, so this is reducer-safe.
+function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6_371_000; // Earth radius, meters
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// Append one row to the live event feed. `event` is append-only and written by
+// both parts; autoInc id means concurrent inserts never conflict.
+function emitEvent(
+  ctx: any,
+  roomId: bigint,
+  type: string,
+  message: string,
+  opts?: { huddleId?: bigint; lat?: number; lng?: number }
+): void {
+  ctx.db.event.insert({
+    id: 0n,
+    roomId,
+    type,
+    message,
+    huddleId: opts?.huddleId,
+    lat: opts?.lat,
+    lng: opts?.lng,
+    createdAt: ctx.timestamp,
+  });
+}
+
+// PART 1 proximity primitive: active users with a fresh GPS fix within
+// PROXIMITY_RADIUS_METERS of (lat,lng) in this room. The one query both
+// pingNearby and Part 2's huddle engine reuse.
+function freshUsersNear(ctx: any, roomId: bigint, lat: number, lng: number): any[] {
+  const now = nowMicros(ctx);
+  return [...ctx.db.presence.roomId.filter(roomId)].filter(
+    (p: any) =>
+      p.status === 'active' &&
+      p.hasFix &&
+      now - p.lastSeen.microsSinceUnixEpoch <= STALE_MICROS &&
+      distanceMeters(lat, lng, p.lat, p.lng) <= PROXIMITY_RADIUS_METERS
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PART 1 REDUCERS — client-callable
+// ═════════════════════════════════════════════════════════════════════════════
+
+// Create/join a room, init this user's row + presence + score. Presence starts
+// with NO fix (hasFix=false) until the first heartbeatLocation arrives.
+export const joinRoom = spacetimedb.reducer(
+  { name: t.string(), roomCode: t.string() },
+  (ctx, { name, roomCode }) => {
+    const displayName = name.trim();
+    const code = roomCode.trim();
+    if (!displayName) throw new SenderError('Name must not be empty');
+    if (!code) throw new SenderError('Room code must not be empty');
+
+    // Room — create the first time this code is used.
+    let theRoom = ctx.db.room.code.find(code);
+    if (!theRoom) {
+      theRoom = ctx.db.room.insert({ id: 0n, code, name: code, createdAt: ctx.timestamp });
+    }
+    const roomId = theRoom.id;
+
+    // User — upsert by Identity (allow rename on rejoin).
+    const existingUser = ctx.db.user.identity.find(ctx.sender);
+    if (existingUser) {
+      ctx.db.user.identity.update({ ...existingUser, name: displayName });
+    } else {
+      ctx.db.user.insert({ identity: ctx.sender, name: displayName, createdAt: ctx.timestamp });
+    }
+
+    // Score — init once per (room, user).
+    if ([...ctx.db.score.by_room_user.filter([roomId, ctx.sender])].length === 0) {
+      ctx.db.score.insert({
+        id: 0n,
+        roomId,
+        identity: ctx.sender,
+        warmthPoints: 0,
+        huddlesJoined: 0,
+        totalHuddleTime: 0n,
+      });
+    }
+
+    // Presence — upsert; no GPS fix yet.
+    const presenceRow = {
+      identity: ctx.sender,
+      roomId,
+      lat: 0,
+      lng: 0,
+      hasFix: false,
+      lastSeen: ctx.timestamp,
+      status: 'active',
+    };
+    if (ctx.db.presence.identity.find(ctx.sender)) {
+      ctx.db.presence.identity.update(presenceRow);
+    } else {
+      ctx.db.presence.insert(presenceRow);
+    }
+
+    emitEvent(ctx, roomId, 'user_joined', `${displayName} joined`);
+  }
+);
+
+// Live location stream: the client calls this repeatedly from the browser's
+// geolocation watchPosition. Updates the caller's fix, then re-runs the engine.
+export const heartbeatLocation = spacetimedb.reducer(
+  { lat: t.f64(), lng: t.f64() },
+  (ctx, { lat, lng }) => {
+    const p = ctx.db.presence.identity.find(ctx.sender);
+    if (!p) throw new SenderError('Join a room first');
+
+    ctx.db.presence.identity.update({
+      ...p,
+      lat,
+      lng,
+      hasFix: true,
+      lastSeen: ctx.timestamp,
+      status: 'active',
+    });
+
+    // Seam to Part 2: re-cluster this room now that someone moved.
+    runHuddleEngine(ctx, p.roomId);
+  }
+);
+
+// Leave: mark the caller offline. Part 2's engine detaches them from any huddle.
+export const leaveRoom = spacetimedb.reducer((ctx) => {
+  const p = ctx.db.presence.identity.find(ctx.sender);
+  if (!p) return;
+  ctx.db.presence.identity.update({ ...p, status: 'offline', lastSeen: ctx.timestamp });
+
+  const who = ctx.db.user.identity.find(ctx.sender)?.name ?? 'Someone';
+  emitEvent(ctx, p.roomId, 'user_left', `${who} left`);
+
+  runHuddleEngine(ctx, p.roomId);
+});
+
+// Maggie's feature: ping the fresh users near the caller (one feed event for MVP).
+export const pingNearby = spacetimedb.reducer((ctx) => {
+  const p = ctx.db.presence.identity.find(ctx.sender);
+  if (!p) throw new SenderError('Join a room first');
+  if (!p.hasFix) throw new SenderError('Waiting for your location…');
+
+  const peers = freshUsersNear(ctx, p.roomId, p.lat, p.lng).filter(
+    (q: any) => !q.identity.equals(ctx.sender)
+  );
+  const who = ctx.db.user.identity.find(ctx.sender)?.name ?? 'Someone';
+  emitEvent(ctx, p.roomId, 'ping', `${who} pinged ${peers.length} people nearby`, {
+    lat: p.lat,
+    lng: p.lng,
   });
 });
 
-export const onConnect = spacetimedb.clientConnected((ctx) => {
-  const existing = ctx.db.player.identity.find(ctx.sender);
-  if (existing) {
-    ctx.db.player.identity.update({ ...existing, online: true });
-  } else {
-    const color = PALETTE[ctx.random.integerInRange(0, PALETTE.length - 1)];
-    ctx.db.player.insert({
-      identity: ctx.sender,
-      name: undefined,
-      penguin_color: color,
-      online: true,
-    });
+// ═════════════════════════════════════════════════════════════════════════════
+// PART 2 — engine + scheduled reducers (signatures locked; bodies are stubs)
+// ═════════════════════════════════════════════════════════════════════════════
+
+// The huddle state machine. Plain helper so BOTH the scheduled tick and Part 1's
+// heartbeatLocation can run it. Reads `presence` (read-only) and mutates
+// huddle / huddle_member / score. Clusters fresh users by PROXIMITY_RADIUS_METERS.
+function runHuddleEngine(_ctx: any, _roomId: bigint): void {
+  // TODO (Part 2): cluster freshUsersNear-style by proximity; candidate → active →
+  // cooling → ended per HUDDLE_LOGIC.md; warm + score active huddles.
+}
+
+// Scheduled ~1s: advance every room's huddle state on time.
+export const huddleTick = spacetimedb.reducer(
+  { timer: huddleTickTimer.rowType },
+  (_ctx, { timer: _timer }) => {
+    // TODO (Part 2): for each room, runHuddleEngine(...).
   }
+);
+
+// Scheduled ~5s: mark users stale/offline once last_seen is too old; cool affected huddles.
+export const expireStalePresence = spacetimedb.reducer(
+  { timer: presenceTickTimer.rowType },
+  (_ctx, { timer: _timer }) => {
+    // TODO (Part 2): now - lastSeen > PRESENCE_STALE_SECONDS → status='stale'; cool huddles.
+  }
+);
+
+// Scheduled ~30s: decay huddle warmth so the map reflects recent activity.
+export const decayHuddles = spacetimedb.reducer(
+  { timer: decayTickTimer.rowType },
+  (_ctx, { timer: _timer }) => {
+    // TODO (Part 2): warmth = max(0, warmth - DECAY_AMOUNT); optional cooled event.
+  }
+);
+
+// ═════════════════════════════════════════════════════════════════════════════
+// LIFECYCLE
+// ═════════════════════════════════════════════════════════════════════════════
+
+// Schedule the three repeating ticks. (Empty-body ticks are harmless no-ops until
+// Parts 1/2 fill them in — but this proves scheduling is wired end-to-end.)
+export const init = spacetimedb.init((ctx) => {
+  ctx.db.huddleTickTimer.insert({ scheduledId: 0n, scheduledAt: ScheduleAt.interval(HUDDLE_TICK_MICROS) });
+  ctx.db.presenceTickTimer.insert({ scheduledId: 0n, scheduledAt: ScheduleAt.interval(PRESENCE_TICK_MICROS) });
+  ctx.db.decayTickTimer.insert({ scheduledId: 0n, scheduledAt: ScheduleAt.interval(DECAY_TICK_MICROS) });
+});
+
+export const onConnect = spacetimedb.clientConnected((ctx) => {
+  const p = ctx.db.presence.identity.find(ctx.sender);
+  if (p) ctx.db.presence.identity.update({ ...p, status: 'active', lastSeen: ctx.timestamp });
 });
 
 export const onDisconnect = spacetimedb.clientDisconnected((ctx) => {
-  const existing = ctx.db.player.identity.find(ctx.sender);
-  if (existing) {
-    ctx.db.player.identity.update({ ...existing, online: false });
-  }
+  const p = ctx.db.presence.identity.find(ctx.sender);
+  if (!p) return;
+  ctx.db.presence.identity.update({ ...p, status: 'offline', lastSeen: ctx.timestamp });
+  runHuddleEngine(ctx, p.roomId);
 });
 
-// ── Reducers ──────────────────────────────────────────────────────────────────
-
-export const set_profile = spacetimedb.reducer(
-  { name: t.string(), penguin_color: t.string() },
-  (ctx, { name, penguin_color }) => {
-    if (!name) throw new SenderError('Name must not be empty');
-    const p = ctx.db.player.identity.find(ctx.sender);
-    if (!p) throw new SenderError('Unknown player');
-    ctx.db.player.identity.update({ ...p, name, penguin_color });
-  }
-);
-
-export const create_huddle = spacetimedb.reducer(
-  {
-    name: t.string(),
-    lat: t.f64(),
-    lng: t.f64(),
-    place_label: t.string(),
-  },
-  (ctx, { name, lat, lng, place_label }) => {
-    if (!name) throw new SenderError('Huddle needs a name');
-    const h = ctx.db.huddle.insert({
-      id: 0n,
-      name,
-      created_by: ctx.sender,
-      created_at: ctx.timestamp,
-      lat,
-      lng,
-      place_label,
-      warmth: 0,
-      member_count: 1,
-      active: true,
-    });
-    ctx.db.huddleMember.insert({
-      id: 0n,
-      huddle_id: h.id,
-      identity: ctx.sender,
-      joined_at: ctx.timestamp,
-    });
-  }
-);
-
-export const join_huddle = spacetimedb.reducer(
-  { huddle_id: t.u64() },
-  (ctx, { huddle_id }) => {
-    const h = ctx.db.huddle.id.find(huddle_id);
-    if (!h) throw new SenderError('Huddle not found');
-    if (!h.active) throw new SenderError('That huddle has already ended');
-
-    const already = [...ctx.db.huddleMember.huddle_id.filter(huddle_id)].some(
-      (m) => m.identity.equals(ctx.sender)
-    );
-    if (already) return; // idempotent — joining twice is a no-op
-
-    ctx.db.huddleMember.insert({
-      id: 0n,
-      huddle_id,
-      identity: ctx.sender,
-      joined_at: ctx.timestamp,
-    });
-    ctx.db.huddle.id.update({ ...h, member_count: h.member_count + 1 });
-  }
-);
-
-export const leave_huddle = spacetimedb.reducer(
-  { huddle_id: t.u64() },
-  (ctx, { huddle_id }) => {
-    const mine = [...ctx.db.huddleMember.huddle_id.filter(huddle_id)].find(
-      (m) => m.identity.equals(ctx.sender)
-    );
-    if (!mine) return;
-    ctx.db.huddleMember.id.delete(mine.id);
-
-    const h = ctx.db.huddle.id.find(huddle_id);
-    if (h) {
-      const member_count = Math.max(0, h.member_count - 1);
-      // An empty huddle ends itself (stops accruing warmth).
-      ctx.db.huddle.id.update({
-        ...h,
-        member_count,
-        active: member_count > 0 && h.active,
-      });
-    }
-  }
-);
-
-export const end_huddle = spacetimedb.reducer(
-  { huddle_id: t.u64() },
-  (ctx, { huddle_id }) => {
-    const h = ctx.db.huddle.id.find(huddle_id);
-    if (!h) throw new SenderError('Huddle not found');
-    if (!h.created_by.equals(ctx.sender)) {
-      throw new SenderError('Only the host can end the huddle');
-    }
-    ctx.db.huddle.id.update({ ...h, active: false });
-  }
-);
-
-// ── Scheduled warmth tick ───────────────────────────────────────────────────
-// Fires once per second. Every active huddle gains warmth proportional to how
-// many people are in it — more people huddling => warmth rises faster.
-export const tick = spacetimedb.reducer(
-  { timer: warmthTimer.rowType },
-  (ctx, _args) => {
-    for (const h of [...ctx.db.huddle.iter()]) {
-      if (!h.active) continue;
-      const gain = h.member_count * WARMTH_PER_MEMBER_PER_TICK;
-      if (gain > 0) {
-        ctx.db.huddle.id.update({ ...h, warmth: h.warmth + gain });
-      }
-    }
-  }
-);
+// Silence "unused" for Part 2 constants the engine stub doesn't reference yet.
+void [
+  MIN_USERS_FOR_HUDDLE, DWELL_THRESHOLD_SECONDS, WARMTH_TICK_SECONDS,
+  COOLING_THRESHOLD_SECONDS, WARMTH_PER_TICK, POINTS_PER_TICK,
+  DECAY_INTERVAL_SECONDS, DECAY_AMOUNT,
+];

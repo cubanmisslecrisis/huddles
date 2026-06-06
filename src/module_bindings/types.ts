@@ -10,17 +10,37 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
+export const DecayTickTimer = __t.object("DecayTickTimer", {
+  scheduledId: __t.u64(),
+  scheduledAt: __t.scheduleAt(),
+});
+export type DecayTickTimer = __Infer<typeof DecayTickTimer>;
+
+export const Event = __t.object("Event", {
+  id: __t.u64(),
+  roomId: __t.u64(),
+  type: __t.string(),
+  message: __t.string(),
+  huddleId: __t.option(__t.u64()),
+  lat: __t.option(__t.f64()),
+  lng: __t.option(__t.f64()),
+  createdAt: __t.timestamp(),
+});
+export type Event = __Infer<typeof Event>;
+
 export const Huddle = __t.object("Huddle", {
   id: __t.u64(),
-  name: __t.string(),
-  createdBy: __t.identity(),
-  createdAt: __t.timestamp(),
+  roomId: __t.u64(),
   lat: __t.f64(),
   lng: __t.f64(),
-  placeLabel: __t.string(),
+  status: __t.string(),
+  candidateStartedAt: __t.timestamp(),
+  activatedAt: __t.option(__t.timestamp()),
+  coolingStartedAt: __t.option(__t.timestamp()),
+  endedAt: __t.option(__t.timestamp()),
   warmth: __t.f64(),
   memberCount: __t.u32(),
-  active: __t.bool(),
+  lastWarmthTickAt: __t.timestamp(),
 });
 export type Huddle = __Infer<typeof Huddle>;
 
@@ -29,20 +49,56 @@ export const HuddleMember = __t.object("HuddleMember", {
   huddleId: __t.u64(),
   identity: __t.identity(),
   joinedAt: __t.timestamp(),
+  lastSeenInHuddle: __t.timestamp(),
+  leftAt: __t.option(__t.timestamp()),
 });
 export type HuddleMember = __Infer<typeof HuddleMember>;
 
-export const Player = __t.object("Player", {
-  identity: __t.identity(),
-  name: __t.option(__t.string()),
-  penguinColor: __t.string(),
-  online: __t.bool(),
-});
-export type Player = __Infer<typeof Player>;
-
-export const WarmthTimer = __t.object("WarmthTimer", {
+export const HuddleTickTimer = __t.object("HuddleTickTimer", {
   scheduledId: __t.u64(),
   scheduledAt: __t.scheduleAt(),
 });
-export type WarmthTimer = __Infer<typeof WarmthTimer>;
+export type HuddleTickTimer = __Infer<typeof HuddleTickTimer>;
+
+export const Presence = __t.object("Presence", {
+  identity: __t.identity(),
+  roomId: __t.u64(),
+  lat: __t.f64(),
+  lng: __t.f64(),
+  hasFix: __t.bool(),
+  lastSeen: __t.timestamp(),
+  status: __t.string(),
+});
+export type Presence = __Infer<typeof Presence>;
+
+export const PresenceTickTimer = __t.object("PresenceTickTimer", {
+  scheduledId: __t.u64(),
+  scheduledAt: __t.scheduleAt(),
+});
+export type PresenceTickTimer = __Infer<typeof PresenceTickTimer>;
+
+export const Room = __t.object("Room", {
+  id: __t.u64(),
+  code: __t.string(),
+  name: __t.string(),
+  createdAt: __t.timestamp(),
+});
+export type Room = __Infer<typeof Room>;
+
+export const Score = __t.object("Score", {
+  id: __t.u64(),
+  roomId: __t.u64(),
+  identity: __t.identity(),
+  warmthPoints: __t.u32(),
+  huddlesJoined: __t.u32(),
+  totalHuddleTime: __t.u64(),
+});
+export type Score = __Infer<typeof Score>;
+
+export const User = __t.object("User", {
+  identity: __t.identity(),
+  name: __t.string(),
+  createdAt: __t.timestamp(),
+});
+export type User = __Infer<typeof User>;
 

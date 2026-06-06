@@ -12,9 +12,9 @@ import {
 
 export default __t.row({
   id: __t.u64().primaryKey(),
-  huddleId: __t.u64().name("huddle_id"),
+  roomId: __t.u64().name("room_id"),
   identity: __t.identity(),
-  joinedAt: __t.timestamp().name("joined_at"),
-  lastSeenInHuddle: __t.timestamp().name("last_seen_in_huddle"),
-  leftAt: __t.option(__t.timestamp()).name("left_at"),
+  warmthPoints: __t.u32().name("warmth_points"),
+  huddlesJoined: __t.u32().name("huddles_joined"),
+  totalHuddleTime: __t.u64().name("total_huddle_time"),
 });

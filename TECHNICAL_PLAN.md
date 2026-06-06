@@ -1,5 +1,46 @@
 # TECHNICAL_PLAN.md — Huddles Implementation Plan
 
+> ⚠️ **MODEL UPDATE — live GPS.** The implemented schema differs from the zone-based draft
+> below. **Authoritative current model:** no `zone` table; `presence` holds `lat`/`lng`/
+> `hasFix`; movement is `heartbeatLocation(lat,lng)` (not `moveToZone`); `huddle` holds
+> `lat`/`lng`/`warmth`/`memberCount`; proximity is haversine `≤ PROXIMITY_RADIUS_METERS`.
+> See "Data Model (live GPS)" immediately below; treat the older zone sections as historical.
+
+## Data Model (live GPS) — AUTHORITATIVE
+
+Tables in `spacetimedb/src/index.ts` (all `public`, snake_case names, identity-keyed):
+
+- **user** — `identity` pk, `name`, `created_at`.
+- **room** — `id` pk autoInc, `code` unique, `name`, `created_at`.
+- **presence** — `identity` pk, `room_id` (index), `lat` f64, `lng` f64, `has_fix` bool,
+  `last_seen`, `status` (active|stale|offline). The Part 1↔2 contract; `has_fix` is false
+  until the first real geolocation reading.
+- **huddle** — `id` pk autoInc, `room_id` (index), `lat`/`lng` (cluster centroid), `status`
+  (candidate|active|cooling|ended), `candidate_started_at`, `activated_at?`,
+  `cooling_started_at?`, `ended_at?`, `warmth` f64, `member_count` u32, `last_warmth_tick_at`.
+- **huddle_member** — `id` pk autoInc, `huddle_id` (index), `identity`, `joined_at`,
+  `last_seen_in_huddle`, `left_at?`.
+- **event** — `id` pk autoInc, `room_id` (index), `type`, `message`, `huddle_id?`,
+  `lat?`, `lng?`, `created_at`. Append-only feed.
+- **score** — `id` pk autoInc, `room_id`, `identity`, `warmth_points`, `huddles_joined`,
+  `total_huddle_time`; index `(room_id, identity)`.
+- **scheduled timers** — `huddle_tick_timer → huddleTick`, `presence_tick_timer →
+  expireStalePresence`, `decay_tick_timer → decayHuddles`.
+
+### Reducers (live GPS)
+- `joinRoom(name, roomCode)` — create/join room, upsert user, init score, init presence
+  (no fix yet), emit `user_joined`.
+- `heartbeatLocation(lat, lng)` — **primary movement input**; update the caller's fix +
+  `last_seen`, then `runHuddleEngine(roomId)`. Client calls it from
+  `navigator.geolocation.watchPosition` (throttled).
+- `leaveRoom()` — mark offline, emit `user_left`, re-run engine.
+- `pingNearby()` — `freshUsersNear(roomId, lat, lng)` within the radius → `ping` event.
+
+### Proximity primitive
+- `freshUsersNear(ctx, roomId, lat, lng)` — active users with a fresh fix whose haversine
+  `distanceMeters(...)` to (lat,lng) is `≤ PROXIMITY_RADIUS_METERS`. Reused by `pingNearby`
+  and the Part 2 engine, which **clusters** fresh users into huddles.
+
 ## Goal
 
 Build a hackathon-ready realtime app where users move around shared zones, form huddles, warm zones, and see the shared world update live.

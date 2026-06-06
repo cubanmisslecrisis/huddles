@@ -11,5 +11,6 @@ import {
 } from "spacetimedb";
 
 export default {
-  huddleId: __t.u64(),
+  name: __t.string(),
+  roomCode: __t.string(),
 };

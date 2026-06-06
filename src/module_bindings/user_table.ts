@@ -12,7 +12,6 @@ import {
 
 export default __t.row({
   identity: __t.identity().primaryKey(),
-  name: __t.option(__t.string()),
-  penguinColor: __t.string().name("penguin_color"),
-  online: __t.bool(),
+  name: __t.string(),
+  createdAt: __t.timestamp().name("created_at"),
 });

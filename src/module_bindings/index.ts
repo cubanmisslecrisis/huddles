@@ -34,28 +34,48 @@ import {
 } from "spacetimedb";
 
 // Import all reducer arg schemas
-import CreateHuddleReducer from "./create_huddle_reducer";
-import EndHuddleReducer from "./end_huddle_reducer";
-import JoinHuddleReducer from "./join_huddle_reducer";
-import LeaveHuddleReducer from "./leave_huddle_reducer";
-import SetProfileReducer from "./set_profile_reducer";
+import HeartbeatLocationReducer from "./heartbeat_location_reducer";
+import JoinRoomReducer from "./join_room_reducer";
+import LeaveRoomReducer from "./leave_room_reducer";
+import PingNearbyReducer from "./ping_nearby_reducer";
 
 // Import all procedure arg schemas
 
 // Import all table schema definitions
+import EventRow from "./event_table";
 import HuddleRow from "./huddle_table";
 import HuddleMemberRow from "./huddle_member_table";
-import PlayerRow from "./player_table";
+import PresenceRow from "./presence_table";
+import RoomRow from "./room_table";
+import ScoreRow from "./score_table";
+import UserRow from "./user_table";
 
 /** Type-only namespace exports for generated type groups. */
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
+  event: __table({
+    name: 'event',
+    indexes: [
+      { accessor: 'id', name: 'event_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'roomId', name: 'event_room_id_idx_btree', algorithm: 'btree', columns: [
+        'roomId',
+      ] },
+    ],
+    constraints: [
+      { name: 'event_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, EventRow),
   huddle: __table({
     name: 'huddle',
     indexes: [
       { accessor: 'id', name: 'huddle_id_idx_btree', algorithm: 'btree', columns: [
         'id',
+      ] },
+      { accessor: 'roomId', name: 'huddle_room_id_idx_btree', algorithm: 'btree', columns: [
+        'roomId',
       ] },
     ],
     constraints: [
@@ -65,7 +85,7 @@ const tablesSchema = __schema({
   huddleMember: __table({
     name: 'huddle_member',
     indexes: [
-      { accessor: 'huddle_id', name: 'huddle_member_huddle_id_idx_btree', algorithm: 'btree', columns: [
+      { accessor: 'huddleId', name: 'huddle_member_huddle_id_idx_btree', algorithm: 'btree', columns: [
         'huddleId',
       ] },
       { accessor: 'id', name: 'huddle_member_id_idx_btree', algorithm: 'btree', columns: [
@@ -76,26 +96,69 @@ const tablesSchema = __schema({
       { name: 'huddle_member_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, HuddleMemberRow),
-  player: __table({
-    name: 'player',
+  presence: __table({
+    name: 'presence',
     indexes: [
-      { accessor: 'identity', name: 'player_identity_idx_btree', algorithm: 'btree', columns: [
+      { accessor: 'identity', name: 'presence_identity_idx_btree', algorithm: 'btree', columns: [
+        'identity',
+      ] },
+      { accessor: 'roomId', name: 'presence_room_id_idx_btree', algorithm: 'btree', columns: [
+        'roomId',
+      ] },
+    ],
+    constraints: [
+      { name: 'presence_identity_key', constraint: 'unique', columns: ['identity'] },
+    ],
+  }, PresenceRow),
+  room: __table({
+    name: 'room',
+    indexes: [
+      { accessor: 'code', name: 'room_code_idx_btree', algorithm: 'btree', columns: [
+        'code',
+      ] },
+      { accessor: 'id', name: 'room_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'room_code_key', constraint: 'unique', columns: ['code'] },
+      { name: 'room_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, RoomRow),
+  score: __table({
+    name: 'score',
+    indexes: [
+      { accessor: 'id', name: 'score_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'by_room_user', name: 'score_room_id_identity_idx_btree', algorithm: 'btree', columns: [
+        'roomId',
         'identity',
       ] },
     ],
     constraints: [
-      { name: 'player_identity_key', constraint: 'unique', columns: ['identity'] },
+      { name: 'score_id_key', constraint: 'unique', columns: ['id'] },
     ],
-  }, PlayerRow),
+  }, ScoreRow),
+  user: __table({
+    name: 'user',
+    indexes: [
+      { accessor: 'identity', name: 'user_identity_idx_btree', algorithm: 'btree', columns: [
+        'identity',
+      ] },
+    ],
+    constraints: [
+      { name: 'user_identity_key', constraint: 'unique', columns: ['identity'] },
+    ],
+  }, UserRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
-  __reducerSchema("create_huddle", CreateHuddleReducer),
-  __reducerSchema("end_huddle", EndHuddleReducer),
-  __reducerSchema("join_huddle", JoinHuddleReducer),
-  __reducerSchema("leave_huddle", LeaveHuddleReducer),
-  __reducerSchema("set_profile", SetProfileReducer),
+  __reducerSchema("heartbeat_location", HeartbeatLocationReducer),
+  __reducerSchema("join_room", JoinRoomReducer),
+  __reducerSchema("leave_room", LeaveRoomReducer),
+  __reducerSchema("ping_nearby", PingNearbyReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */

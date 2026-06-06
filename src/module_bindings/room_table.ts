@@ -10,9 +10,9 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default {
+export default __t.row({
+  id: __t.u64().primaryKey(),
+  code: __t.string(),
   name: __t.string(),
-  lat: __t.f64(),
-  lng: __t.f64(),
-  placeLabel: __t.string(),
-};
+  createdAt: __t.timestamp().name("created_at"),
+});

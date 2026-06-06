@@ -1,5 +1,13 @@
 # HUDDLE_LOGIC.md — Huddle Rules and State Machine
 
+> ⚠️ **MODEL UPDATE — proximity is GPS radius, not zones.** "Same zone = close enough" is
+> **superseded**: two users are "together" when the haversine distance between their live
+> GPS fixes is `≤ PROXIMITY_RADIUS_METERS` (demo: 100 m). Presence stores `lat`/`lng`
+> (+`hasFix`), refreshed by `heartbeatLocation(lat,lng)`. A huddle forms around a **cluster**
+> of 2+ nearby users and lives at the cluster centroid. The state machine
+> (candidate→active→cooling→ended), constants, dwell/cooling, warmth, and freshness rules
+> are otherwise unchanged — just swap "in the same zone" for "within the radius."
+
 ## Purpose
 
 This document defines the business/game logic for forming, maintaining, scoring, cooling, and ending huddles.

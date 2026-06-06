@@ -11,5 +11,6 @@ import {
 } from "spacetimedb";
 
 export default {
-  huddleId: __t.u64(),
+  lat: __t.f64(),
+  lng: __t.f64(),
 };

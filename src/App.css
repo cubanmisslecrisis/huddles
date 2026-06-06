@@ -154,3 +154,76 @@ section h2 { font-size: 1.05rem; margin: 4px 0 10px; }
   border: 1px solid rgba(255,255,255,0.08);
 }
 .leaflet-container { background: #0b1220; font-family: inherit; }
+
+/* ── Room: status panel ── */
+.status-panel {
+  display: flex; flex-direction: column; gap: 10px;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px; padding: 14px;
+}
+.status-where { display: flex; flex-direction: column; gap: 2px; }
+.status-where strong { font-size: 1.25rem; }
+.status-huddle { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* ── Badges ── */
+.badge {
+  font-size: 0.78rem; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+  background: rgba(255,255,255,0.1); color: #cdd9ee; white-space: nowrap;
+}
+.badge.active   { background: rgba(255,120,60,0.18);  color: #ffb877; }
+.badge.candidate{ background: rgba(127,209,255,0.16); color: #7FD1FF; }
+.badge.cooling  { background: rgba(140,170,255,0.14); color: #aebfff; }
+.badge.alone    { background: rgba(255,255,255,0.07); color: #8ea0bd; }
+
+/* ── Zone grid ── */
+.zone-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+}
+.zone-card {
+  display: flex; flex-direction: column; gap: 8px; text-align: left;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px; padding: 12px; color: #e6edf8;
+  transition: transform 0.08s ease, border-color 0.15s ease;
+}
+.zone-card:not(:disabled):active { transform: scale(0.97); }
+.zone-card.here { border-color: #7FD1FF; background: rgba(127,209,255,0.1); }
+.zone-card:disabled { cursor: default; }
+.zone-top { display: flex; align-items: center; gap: 8px; }
+.zone-top strong { flex: 1; }
+.zone-emoji { font-size: 1.3rem; }
+.zone-meta { display: flex; justify-content: space-between; align-items: center; }
+
+/* ── Feed ── */
+.feed { display: flex; flex-direction: column; gap: 6px; }
+.feed-item {
+  display: flex; gap: 10px; align-items: baseline;
+  background: rgba(255,255,255,0.04); border-radius: 10px; padding: 8px 12px;
+  font-size: 0.92rem;
+}
+.feed-emoji { flex: none; }
+.feed-msg { color: #d4deef; }
+
+/* ── Scoreboard ── */
+.board-row.me-row { border: 1px solid rgba(127,209,255,0.4); }
+
+/* ── Live map markers (LiveMap.tsx divIcons) ── */
+.live-marker, .huddle-glow-marker { background: none !important; border: none !important; }
+.live-marker { display: flex; flex-direction: column; align-items: center; }
+.live-dot {
+  width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center;
+  color: #06243f; font-weight: 800; font-size: 0.85rem;
+  border: 2px solid rgba(255,255,255,0.85);
+}
+.live-name {
+  margin-top: 2px; white-space: nowrap; width: max-content;
+  font-size: 0.7rem; font-weight: 700; color: #e6edf8;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.95);
+}
+.huddle-glow {
+  border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(circle, rgba(255,150,80,0.5), rgba(255,90,60,0.12));
+  color: #fff; font-weight: 800; font-size: 0.9rem; text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+}
+.huddle-glow.active { animation: huddlepulse 1.8s ease-in-out infinite; }
+@keyframes huddlepulse { 0%,100% { opacity: 0.9; } 50% { opacity: 0.55; } }

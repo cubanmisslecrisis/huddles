@@ -1,5 +1,11 @@
 # PROJECT.md — Huddles Product Context
 
+> ⚠️ **MODEL UPDATE — live GPS, not tap-to-move.** Huddles uses **real-time location
+> tracking on a map**: clients stream their GPS position and the server forms huddles by
+> **geographic proximity** (users within `PROXIMITY_RADIUS_METERS` of each other). The
+> "fake zones / tap-to-move / avoid GPS for the hackathon" guidance below is **superseded**
+> — wherever it says "tap a zone," read "your live location on the map."
+
 ## One-Liner
 
 **Huddles is a realtime social proximity app where friends form “huddles” by spending time together, warming up places and creating a visible record of real-world social presence.**

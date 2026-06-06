@@ -12,9 +12,11 @@ import {
 
 export default __t.row({
   id: __t.u64().primaryKey(),
-  huddleId: __t.u64().name("huddle_id"),
-  identity: __t.identity(),
-  joinedAt: __t.timestamp().name("joined_at"),
-  lastSeenInHuddle: __t.timestamp().name("last_seen_in_huddle"),
-  leftAt: __t.option(__t.timestamp()).name("left_at"),
+  roomId: __t.u64().name("room_id"),
+  type: __t.string(),
+  message: __t.string(),
+  huddleId: __t.option(__t.u64()).name("huddle_id"),
+  lat: __t.option(__t.f64()),
+  lng: __t.option(__t.f64()),
+  createdAt: __t.timestamp().name("created_at"),
 });

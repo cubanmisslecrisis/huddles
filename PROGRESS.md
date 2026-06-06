@@ -1,73 +1,72 @@
 # PROGRESS.md — Huddles Build Status
 
-Status tracker for the rebuild toward the spec in `PROJECT.md` / `HUDDLE_LOGIC.md` /
-`TECHNICAL_PLAN.md`. Legend: ✅ done · 🟡 partial / starter-only · ⬜ not started.
+Status tracker for the build. Legend: ✅ done · 🟡 partial · ⬜ not started.
+Model: **live GPS location on a map** (not tap-to-move zones — see the MODEL UPDATE
+banners in `PROJECT.md` / `HUDDLE_LOGIC.md` / `TECHNICAL_PLAN.md`).
 
-> **Big picture:** the project scaffold runs and the spec is written, but **no spec
-> feature is implemented yet**. The live module is still the chat quickstart and the
-> client is the manual "penguin huddle" starter. The work below is the gap to the
-> emergent, server-decided huddle model.
+> **Big picture.** Backend pivoted to **real-time GPS + radius proximity** and is live on
+> `huddles-5eq44`: `presence` holds `lat`/`lng`/`has_fix`; movement is
+> `heartbeatLocation(lat,lng)`; proximity is haversine `≤ PROXIMITY_RADIUS_METERS` (100 m
+> demo); no `zone` table. **Part 1 (location + proximity) reducers are implemented and
+> verified on maincloud.** Open: **Part 2 huddle engine** (cluster nearby users → state
+> machine — all stubs) and the **client** (browser geolocation → `heartbeatLocation` + a
+> live map). `src/App.tsx` is currently **broken** (penguin/zone hybrid, ~18 tsc errors)
+> and must be rebuilt to the GPS model.
 
 ---
 
 ## Done ✅
 
-- **Tooling / env** — `npm install` complete (Vite 7.3.5 resolves); `npm run dev` works.
-- **SpacetimeDB connection** — published to maincloud as `huddles-5eq44`; `.env.local`
-  and `spacetime.json` wired; client connects via `SpacetimeDBProvider` in `main.tsx`.
-- **Spec docs** — `PROJECT.md` (product), `HUDDLE_LOGIC.md` (state machine, corrected to
-  the TS stack), `TECHNICAL_PLAN.md` (architecture/tables/reducers/scheduling, corrected).
-- **Conventions** — `CLAUDE.md` + `AGENTS.md` updated with code conventions and pointers
-  to the spec docs.
+- **Tooling / env** — `npm install` done; `npm run dev` works.
+- **SpacetimeDB connection** — live as `huddles-5eq44`; `.env.local` + `spacetime.json`
+  wired; client connects via `SpacetimeDBProvider` in `main.tsx`.
+- **Backend schema (live GPS)** — `spacetimedb/src/index.ts`: tables `user`, `room`,
+  `presence` (lat/lng/has_fix), `huddle` (lat/lng/warmth/member_count), `huddle_member`,
+  `event`, `score` + 3 scheduled timers (`huddle_tick`/`presence_tick`/`decay_tick`).
+  Published (`--delete-data`), `init` schedules the 1s/5s/30s ticks (verified).
+- **Part 1 reducers (verified on maincloud):** `joinRoom`, `heartbeatLocation(lat,lng)`,
+  `leaveRoom`, `pingNearby`, `onConnect`/`onDisconnect`, plus helpers `distanceMeters`
+  (haversine), `freshUsersNear` (radius), `emitEvent`. CLI smoke test passed:
+  join → heartbeat (sets lat/lng + has_fix) → ping → feed events all correct.
+- **Spec docs + conventions** — `PROJECT`/`HUDDLE_LOGIC`/`TECHNICAL_PLAN`/`WORK_SPLIT`/
+  `CLAUDE`/`AGENTS` carry the live-GPS MODEL UPDATE; `TECHNICAL_PLAN` has an authoritative
+  "Data Model (live GPS)" section.
 
-## Partial / starter-only 🟡 (exists, but does NOT match the spec)
+## In progress / blocked 🟡
 
-- **Module `spacetimedb/src/index.ts`** — still the SpacetimeDB **chat quickstart**
-  (`user` + `message`, `set_name` / `send_message`). This is what's published. Must be
-  replaced.
-- **Client `src/App.tsx` + `src/HuddleMap.tsx`** — a **manual** penguin app where the
-  user taps "Start a huddle." Opposite of the spec's server-decided model. Reusable bits:
-  React/Vite scaffold, `useTable`/`useReducer` wiring patterns, the leaflet map component
-  (adaptable to zone markers), QR/share-link plumbing.
-- **Generated bindings `src/module_bindings/`** — describe the penguin
-  `player`/`huddle`/`huddle_member` schema, not the spec tables. Will be regenerated.
+- **Part 2 huddle engine is stubbed** — `runHuddleEngine` / `huddleTick` /
+  `expireStalePresence` / `decayHuddles` are still `// TODO`, so huddles don't yet
+  form/warm/score and `presence` never goes stale. This is the remaining backend work.
+- **`src/HuddleMap.tsx` + `src/Profile.tsx`** — leftover penguin components, no longer
+  imported (the live map is the new `src/LiveMap.tsx`). Harmless; delete when convenient.
 
-## To do ⬜ (in TECHNICAL_PLAN priority order)
+## To do ⬜
 
-### Backend — module rewrite (`spacetimedb/src/index.ts`)
-- ⬜ Define spec tables: `user`, `room`, `presence`, `zone`, `huddle`, `huddle_member`,
-  `event`, `score` (snake_case names; identity-keyed; indexes on `(room_id, zone_id)`).
-- ⬜ Tunable constants block (dwell / cooling / warmth / staleness from `HUDDLE_LOGIC.md`).
-- ⬜ Scheduled tables + `init` to schedule them: `huddle_tick → updateHuddles`,
-  `presence_tick → expireStalePresence`, `decay_tick → decayZones`.
-- ⬜ `joinRoom(name, roomCode)` — find/create room, upsert user (`ctx.sender`), seed
-  default zones, init score/presence, emit `user_joined`.
-- ⬜ `moveToZone(zoneId)` — update presence + `last_seen`, emit `user_moved`, run state
-  machine on old + new zones.
-- ⬜ `updateHuddles()` — candidate → active → cooling → ended (per pseudocode).
-- ⬜ `expireStalePresence()` and `decayZones()`.
-- ⬜ `leaveRoom()`; `clientDisconnected` marks presence offline.
-- ⬜ (post-MVP) `heartbeatLocation(lat, lng)` for real GPS.
-- ⬜ Publish with `--delete-data` (breaking change from chat) + `npm run spacetime:generate`
-  to refresh bindings.
+### Backend — Part 2 huddle engine (`spacetimedb/src/index.ts`)
+- ⬜ `runHuddleEngine(roomId)` — cluster fresh users (within `PROXIMITY_RADIUS_METERS`) →
+  candidate → active → cooling → ended (`HUDDLE_LOGIC.md`); set huddle centroid lat/lng,
+  warm + score active huddles.
+- ⬜ `huddleTick` (drive engine), `expireStalePresence` (stale → cool), `decayHuddles`
+  (warmth decay).
 
-### Frontend — client rewrite (`src/`)
+### Frontend — client rebuild (`src/App.tsx` + map)
 - ⬜ Join screen → `joinRoom`.
-- ⬜ Zone/map screen (tap-to-move → `moveToZone`); reuse/adapt `HuddleMap.tsx`.
-- ⬜ Subscribe to room-scoped tables; render live presence.
-- ⬜ Huddle panel (alone / forming / active / cooling + members + warmth).
-- ⬜ Event feed (newest first; live via row callbacks).
-- ⬜ Scoreboard (warmth points; optionally huddles joined / total time).
+- ⬜ **Geolocation:** `navigator.geolocation.watchPosition` → throttled `heartbeatLocation(lat,lng)`.
+- ⬜ **Live map:** plot `presence` markers (live) + `huddle` warmth circles at their centroids.
+- ⬜ Subscribe to room-scoped tables; status panel (your huddle: forming/active/cooling).
+- ⬜ Event feed (newest first) + scoreboard.
+- ⬜ "Ping nearby" button → `pingNearby`.
 
 ### Demo & polish
-- ⬜ Bot mode (scheduled `bot_tick` moving bots via `moveToZone`; Spawn/Stop controls).
-- ⬜ End-to-end demo verification (two browsers, the `TECHNICAL_PLAN.md` demo script).
-- ⬜ Replace remaining penguin-app copy/UI; update README (still says "quickstart-chat").
+- ⬜ Bot mode (simulated movers calling `heartbeatLocation`).
+- ⬜ Two-client end-to-end demo (both share a location → huddle forms/warms/cools).
+- ⬜ Purge remaining zone/tap-to-move prose from the spec docs (banners cover it for now);
+  update README (still says "quickstart-chat").
 
 ---
 
-## Definition of Done (from TECHNICAL_PLAN.md)
+## Definition of Done
 
-Two clients join the same room · move between zones · presence updates live · same-zone
-pair forms a candidate → active huddle · active huddle warms the zone (live) · event feed
-updates live · separation cools/ends the huddle · scoreboard/recap updates.
+Two clients join the same room and share their live location · both appear on the map ·
+when they're within the radius a candidate → active huddle forms · the huddle warms (live)
+· event feed + scoreboard update · moving apart cools then ends it.
