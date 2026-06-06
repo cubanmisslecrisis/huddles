@@ -208,7 +208,7 @@ function App() {
             </div>
           </div>
 
-          <div style={{ flex: 1, minHeight: 0, marginX: '16px', marginBottom: '16px' }}>
+          <div style={{ flex: 1, minHeight: 0, marginLeft: '16px', marginRight: '16px', marginBottom: '16px' }}>
             <LiveMap users={userMarkers} huddles={huddleMarkers} myLoc={myLoc} />
           </div>
         </>
