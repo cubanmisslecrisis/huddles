@@ -354,38 +354,253 @@ export const pingNearby = spacetimedb.reducer((ctx) => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// PART 2 — engine + scheduled reducers (signatures locked; bodies are stubs)
+// PART 2 — engine + scheduled reducers
 // ═════════════════════════════════════════════════════════════════════════════
 
-// The huddle state machine. Plain helper so BOTH the scheduled tick and Part 1's
-// heartbeatLocation can run it. Reads `presence` (read-only) and mutates
-// huddle / huddle_member / score. Clusters fresh users by PROXIMITY_RADIUS_METERS.
-function runHuddleEngine(_ctx: any, _roomId: bigint): void {
-  // TODO (Part 2): cluster freshUsersNear-style by proximity; candidate → active →
-  // cooling → ended per HUDDLE_LOGIC.md; warm + score active huddles.
+// Build proximity clusters from a list of fresh presence rows.
+// Greedy O(n²) — fine for demo-scale rooms (<20 users).
+// Returns arrays of presence rows, one array per cluster.
+function buildClusters(users: any[]): any[][] {
+  const assigned = new Set<number>();
+  const clusters: any[][] = [];
+  for (let i = 0; i < users.length; i++) {
+    if (assigned.has(i)) continue;
+    const cluster = [users[i]];
+    assigned.add(i);
+    for (let j = i + 1; j < users.length; j++) {
+      if (assigned.has(j)) continue;
+      if (distanceMeters(users[i].lat, users[i].lng, users[j].lat, users[j].lng) <= PROXIMITY_RADIUS_METERS) {
+        cluster.push(users[j]);
+        assigned.add(j);
+      }
+    }
+    clusters.push(cluster);
+  }
+  return clusters;
+}
+
+// Centroid of a cluster.
+function centroid(cluster: any[]): { lat: number; lng: number } {
+  const lat = cluster.reduce((s: number, p: any) => s + p.lat, 0) / cluster.length;
+  const lng = cluster.reduce((s: number, p: any) => s + p.lng, 0) / cluster.length;
+  return { lat, lng };
+}
+
+// Find an existing non-ended huddle for this room whose centroid is near (lat,lng).
+function findHuddleNear(ctx: any, roomId: bigint, lat: number, lng: number): any | null {
+  for (const h of ctx.db.huddle.roomId.filter(roomId)) {
+    if (h.status !== 'ended' && distanceMeters(lat, lng, h.lat, h.lng) <= PROXIMITY_RADIUS_METERS) {
+      return h;
+    }
+  }
+  return null;
+}
+
+// Upsert a score row: add warmth points and bump huddlesJoined on first join.
+function addScore(ctx: any, roomId: bigint, identity: any, warmth: number, firstJoin: boolean): void {
+  const rows = [...ctx.db.score.by_room_user.filter([roomId, identity])];
+  if (rows.length === 0) return; // shouldn't happen — joinRoom inserts it
+  const s = rows[0];
+  ctx.db.score.id.update({
+    ...s,
+    warmthPoints: s.warmthPoints + warmth,
+    huddlesJoined: s.huddlesJoined + (firstJoin ? 1 : 0),
+    totalHuddleTime: s.totalHuddleTime + BigInt(WARMTH_TICK_SECONDS),
+  });
+}
+
+// The huddle state machine. Called inline from Part 1 reducers (instant feedback)
+// and from the scheduled huddleTick (time-driven correctness).
+function runHuddleEngine(ctx: any, roomId: bigint): void {
+  const now = nowMicros(ctx);
+
+  // Fresh, active, GPS-fixed users in this room.
+  const freshUsers = [...ctx.db.presence.roomId.filter(roomId)].filter(
+    (p: any) =>
+      p.status === 'active' &&
+      p.hasFix &&
+      now - p.lastSeen.microsSinceUnixEpoch <= STALE_MICROS
+  );
+
+  const clusters = buildClusters(freshUsers).filter((c) => c.length >= MIN_USERS_FOR_HUDDLE);
+
+  // Track which huddle IDs are "covered" by a cluster this tick.
+  const coveredHuddleIds = new Set<bigint>();
+
+  for (const cluster of clusters) {
+    const c = centroid(cluster);
+    let huddle = findHuddleNear(ctx, roomId, c.lat, c.lng);
+
+    if (!huddle) {
+      // Create a candidate.
+      huddle = ctx.db.huddle.insert({
+        id: 0n,
+        roomId,
+        lat: c.lat,
+        lng: c.lng,
+        status: 'candidate',
+        candidateStartedAt: ctx.timestamp,
+        activatedAt: undefined,
+        coolingStartedAt: undefined,
+        endedAt: undefined,
+        warmth: 0,
+        memberCount: cluster.length,
+        lastWarmthTickAt: ctx.timestamp,
+      });
+      for (const p of cluster) {
+        ctx.db.huddleMember.insert({
+          id: 0n,
+          huddleId: huddle.id,
+          identity: p.identity,
+          joinedAt: ctx.timestamp,
+          lastSeenInHuddle: ctx.timestamp,
+          leftAt: undefined,
+        });
+      }
+      const names = cluster
+        .map((p: any) => ctx.db.user.identity.find(p.identity)?.name ?? 'Someone')
+        .join(' + ');
+      emitEvent(ctx, roomId, 'huddle_forming', `Huddle forming: ${names}`, { huddleId: huddle.id, lat: c.lat, lng: c.lng });
+      coveredHuddleIds.add(huddle.id);
+      continue;
+    }
+
+    coveredHuddleIds.add(huddle.id);
+
+    // Sync members: update centroid + memberCount.
+    const clusterIdentities = new Set(cluster.map((p: any) => p.identity.toHexString()));
+    const existingMembers = [...ctx.db.huddleMember.huddleId.filter(huddle.id)];
+
+    // Mark departed members.
+    for (const m of existingMembers) {
+      if (!m.leftAt && !clusterIdentities.has(m.identity.toHexString())) {
+        ctx.db.huddleMember.id.update({ ...m, leftAt: ctx.timestamp });
+      }
+    }
+
+    // Add new members or refresh lastSeenInHuddle.
+    const memberIdentityHexes = new Set(existingMembers.map((m: any) => m.identity.toHexString()));
+    for (const p of cluster) {
+      const hex = p.identity.toHexString();
+      if (!memberIdentityHexes.has(hex)) {
+        ctx.db.huddleMember.insert({
+          id: 0n,
+          huddleId: huddle.id,
+          identity: p.identity,
+          joinedAt: ctx.timestamp,
+          lastSeenInHuddle: ctx.timestamp,
+          leftAt: undefined,
+        });
+      } else {
+        const m = existingMembers.find((m: any) => m.identity.toHexString() === hex);
+        if (m) ctx.db.huddleMember.id.update({ ...m, lastSeenInHuddle: ctx.timestamp, leftAt: undefined });
+      }
+    }
+
+    // Refresh huddle centroid + memberCount.
+    huddle = { ...huddle, lat: c.lat, lng: c.lng, memberCount: cluster.length };
+
+    // State transitions.
+    if (huddle.status === 'cooling') {
+      huddle = { ...huddle, status: 'active', coolingStartedAt: undefined };
+      ctx.db.huddle.id.update(huddle);
+      emitEvent(ctx, roomId, 'huddle_activated', 'Huddle reactivated!', { huddleId: huddle.id, lat: c.lat, lng: c.lng });
+    } else if (huddle.status === 'candidate') {
+      const dwellMicros = BigInt(DWELL_THRESHOLD_SECONDS) * 1_000_000n;
+      if (now - huddle.candidateStartedAt.microsSinceUnixEpoch >= dwellMicros) {
+        huddle = { ...huddle, status: 'active', activatedAt: ctx.timestamp };
+        ctx.db.huddle.id.update(huddle);
+        const names = cluster
+          .map((p: any) => ctx.db.user.identity.find(p.identity)?.name ?? 'Someone')
+          .join(' + ');
+        emitEvent(ctx, roomId, 'huddle_activated', `🔥 Huddle activated: ${names}`, { huddleId: huddle.id, lat: c.lat, lng: c.lng });
+      } else {
+        ctx.db.huddle.id.update(huddle);
+      }
+    } else {
+      ctx.db.huddle.id.update(huddle);
+    }
+
+    // Warmth tick (only when active).
+    if (huddle.status === 'active') {
+      const tickMicros = BigInt(WARMTH_TICK_SECONDS) * 1_000_000n;
+      if (now - huddle.lastWarmthTickAt.microsSinceUnixEpoch >= tickMicros) {
+        const newWarmth = huddle.warmth + WARMTH_PER_TICK;
+        ctx.db.huddle.id.update({ ...huddle, warmth: newWarmth, lastWarmthTickAt: ctx.timestamp });
+        // Award points to each cluster member.
+        let firstJoinCheck = false;
+        for (const p of cluster) {
+          const isNew = !existingMembers.some((m: any) => m.identity.toHexString() === p.identity.toHexString());
+          if (!firstJoinCheck && isNew) firstJoinCheck = true;
+          addScore(ctx, roomId, p.identity, POINTS_PER_TICK, isNew);
+        }
+        emitEvent(ctx, roomId, 'huddle_warmed', `Zone warmed +${WARMTH_PER_TICK}`, { huddleId: huddle.id, lat: c.lat, lng: c.lng });
+      }
+    }
+  }
+
+  // Handle huddles not covered by any cluster this tick.
+  for (const h of [...ctx.db.huddle.roomId.filter(roomId)]) {
+    if (h.status === 'ended' || coveredHuddleIds.has(h.id)) continue;
+
+    if (h.status === 'active') {
+      ctx.db.huddle.id.update({ ...h, status: 'cooling', coolingStartedAt: ctx.timestamp });
+      emitEvent(ctx, roomId, 'huddle_cooling', 'Huddle cooling…', { huddleId: h.id, lat: h.lat, lng: h.lng });
+    } else if (h.status === 'candidate') {
+      ctx.db.huddle.id.update({ ...h, status: 'ended', endedAt: ctx.timestamp });
+    } else if (h.status === 'cooling') {
+      const coolMicros = BigInt(COOLING_THRESHOLD_SECONDS) * 1_000_000n;
+      if (now - h.coolingStartedAt!.microsSinceUnixEpoch >= coolMicros) {
+        ctx.db.huddle.id.update({ ...h, status: 'ended', endedAt: ctx.timestamp });
+        // Duration from activation, or candidate start if never activated.
+        const startMicros = h.activatedAt
+          ? h.activatedAt.microsSinceUnixEpoch
+          : h.candidateStartedAt.microsSinceUnixEpoch;
+        const durationSec = Number((now - startMicros) / 1_000_000n);
+        emitEvent(ctx, roomId, 'huddle_ended', `Huddle ended after ${durationSec}s`, { huddleId: h.id, lat: h.lat, lng: h.lng });
+      }
+    }
+  }
 }
 
 // Scheduled ~1s: advance every room's huddle state on time.
 export const huddleTick = spacetimedb.reducer(
   { timer: huddleTickTimer.rowType },
-  (_ctx, { timer: _timer }) => {
-    // TODO (Part 2): for each room, runHuddleEngine(...).
+  (ctx, { timer: _timer }) => {
+    const roomIds = new Set<bigint>([...ctx.db.presence.iter()].map((p: any) => p.roomId));
+    for (const roomId of roomIds) {
+      runHuddleEngine(ctx, roomId);
+    }
   }
 );
 
-// Scheduled ~5s: mark users stale/offline once last_seen is too old; cool affected huddles.
+// Scheduled ~5s: mark users stale once last_seen is too old; run engine so cooling starts.
 export const expireStalePresence = spacetimedb.reducer(
   { timer: presenceTickTimer.rowType },
-  (_ctx, { timer: _timer }) => {
-    // TODO (Part 2): now - lastSeen > PRESENCE_STALE_SECONDS → status='stale'; cool huddles.
+  (ctx, { timer: _timer }) => {
+    const now = nowMicros(ctx);
+    const stalledRooms = new Set<bigint>();
+    for (const p of [...ctx.db.presence.iter()]) {
+      if (p.status === 'active' && now - p.lastSeen.microsSinceUnixEpoch > STALE_MICROS) {
+        ctx.db.presence.identity.update({ ...p, status: 'stale' });
+        stalledRooms.add(p.roomId);
+      }
+    }
+    for (const roomId of stalledRooms) {
+      runHuddleEngine(ctx, roomId);
+    }
   }
 );
 
 // Scheduled ~30s: decay huddle warmth so the map reflects recent activity.
 export const decayHuddles = spacetimedb.reducer(
   { timer: decayTickTimer.rowType },
-  (_ctx, { timer: _timer }) => {
-    // TODO (Part 2): warmth = max(0, warmth - DECAY_AMOUNT); optional cooled event.
+  (ctx, { timer: _timer }) => {
+    for (const h of [...ctx.db.huddle.iter()]) {
+      if (h.status !== 'ended' && h.warmth > 0) {
+        ctx.db.huddle.id.update({ ...h, warmth: Math.max(0, h.warmth - DECAY_AMOUNT) });
+      }
+    }
   }
 );
 
@@ -413,9 +628,3 @@ export const onDisconnect = spacetimedb.clientDisconnected((ctx) => {
   runHuddleEngine(ctx, p.roomId);
 });
 
-// Silence "unused" for Part 2 constants the engine stub doesn't reference yet.
-void [
-  MIN_USERS_FOR_HUDDLE, DWELL_THRESHOLD_SECONDS, WARMTH_TICK_SECONDS,
-  COOLING_THRESHOLD_SECONDS, WARMTH_PER_TICK, POINTS_PER_TICK,
-  DECAY_INTERVAL_SECONDS, DECAY_AMOUNT,
-];
