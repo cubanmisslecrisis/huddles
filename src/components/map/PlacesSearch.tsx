@@ -6,12 +6,12 @@ export function PlacesSearch({
   userLat,
   userLng,
   onPlacesFound,
-  loading = false,
+  onLoadingChange,
 }: {
   userLat: number | null;
   userLng: number | null;
   onPlacesFound: (places: Place[]) => void;
-  loading?: boolean;
+  onLoadingChange?: (loading: boolean) => void;
 }) {
   const [query, setQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -23,17 +23,21 @@ export function PlacesSearch({
 
   const handleNearbySearch = async (placeTypes: string[]) => {
     setIsSearching(true);
+    onLoadingChange?.(true);
     const places = await searchNearbyPlaces(userLat, userLng, 1500, placeTypes);
     onPlacesFound(places);
     setIsSearching(false);
+    onLoadingChange?.(false);
   };
 
   const handleQuerySearch = async () => {
     if (!query.trim()) return;
     setIsSearching(true);
+    onLoadingChange?.(true);
     const places = await searchPlacesByQuery(userLat, userLng, query, 2000);
     onPlacesFound(places);
     setIsSearching(false);
+    onLoadingChange?.(false);
   };
 
   return (
