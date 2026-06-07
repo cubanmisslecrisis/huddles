@@ -183,3 +183,48 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Place Markers */
+.place-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.place-marker-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #ff6b35 0%, #ff8c42 100%);
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 0 3px rgba(255, 107, 53, 0.2);
+  border: 2px solid white;
+  transition: all 0.2s ease;
+}
+
+.place-marker-dot {
+  width: 8px;
+  height: 8px;
+  background: white;
+  border-radius: 50%;
+}
+
+.place-marker.selected .place-marker-icon {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, #ff4500 0%, #ff6347 100%);
+  box-shadow: 0 0 0 8px rgba(255, 69, 0, 0.2), 0 4px 16px rgba(0, 0, 0, 0.4);
+  animation: place-marker-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes place-marker-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 8px rgba(255, 69, 0, 0.2), 0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 12px rgba(255, 69, 0, 0.1), 0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+}

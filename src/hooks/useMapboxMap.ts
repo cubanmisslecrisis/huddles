@@ -230,5 +230,5 @@ export function useMapboxMap({
 
   const markerPortals = mounted ? markerDefs.map((def) => createPortal(def.node, getContainer(def.key), def.key)) : null;
 
-  return { mapContainerRef, tokenMissing, markerPortals, recenter, flyTo, zoomIn, zoomOut };
+  return { mapContainerRef, tokenMissing, markerPortals, recenter, flyTo, zoomIn, zoomOut, mapRef };
 }
