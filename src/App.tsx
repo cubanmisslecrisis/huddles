@@ -384,17 +384,13 @@ function App() {
         onSelect={onSelect}
         sheetState={sheetState}
         onSheetStateChange={setSheetState}
-        activeLayers={activeLayers}
         filter={filter}
         onFilter={onFilter}
         onSearch={() => setShowSearch(true)}
         onAdd={() => setShowAdd(true)}
         onPing={() => setShowPing(true)}
         onOpenProfile={() => setShowProfile(true)}
-        controlsRef={mapControls}
         me={me}
-        avatars={avatars}
-        heat={heat}
         myLoc={myLoc}
         friends={friends}
         huddles={huddleList}
