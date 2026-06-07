@@ -11,15 +11,9 @@ const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
 const FALLBACK: [number, number] = [-73.9857, 40.7484];
 const DEFAULT_ZOOM = 14.5;
 
-// Base heatmap = the full persistent field (trails + hubs), rendered STEADY.
+// Heatmap = the full huddle-heat field, rendered as a single STEADY layer (no pulsing).
 const WARMTH_SOURCE_ID = 'activity-heat';
 const WARMTH_LAYER_ID = 'activity-heat-layer';
-// Live overlay = only cells a huddle is depositing into right now; this is the layer that PULSES,
-// so the pulse means "happening here now" (the trail head + active hubs) vs persisted history.
-const WARMTH_LIVE_SOURCE_ID = 'activity-heat-live';
-const WARMTH_LIVE_LAYER_ID = 'activity-heat-live-layer';
-// A cell is "live" if it was updated within this window (deposits land every ~1s while active).
-const LIVE_WINDOW_MS = 2500;
 
 // Shared heatmap paint (weight ramp 0..40, zoom intensity, warm→cool color), used by both layers.
 const HEAT_WEIGHT: mapboxgl.ExpressionSpecification =
@@ -40,8 +34,10 @@ const HEAT_COLOR: mapboxgl.ExpressionSpecification = [
   1, 'rgba(0, 255, 150, 1)',
 ];
 // Steady (un-pulsed) radius ramp by zoom; the live layer multiplies this by the pulse.
+// Kept tight so a huddle's heat resolves its members' SHAPE (a rounded triangle for 3) rather
+// than blurring every cluster into one big circle. Raise these for softer/blobbier heat.
 const HEAT_RADIUS_STEADY: mapboxgl.ExpressionSpecification =
-  ['interpolate', ['linear'], ['zoom'], 10, 15, 12, 35, 14, 65, 15, 90, 16, 120, 17, 160];
+  ['interpolate', ['linear'], ['zoom'], 10, 8, 12, 16, 14, 28, 15, 40, 16, 55, 17, 75];
 
 function heatGeoJSON(heat: HeatPoint[]): GeoJSON.FeatureCollection {
   return {
@@ -76,10 +72,6 @@ export function useMapboxMap({
   const [mapReady, setMapReady] = useState(false);
   const [tokenMissing, setTokenMissing] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [heatmapPulse, setHeatmapPulse] = useState(0);
-  // Bumped every second so the "live" overlay re-evaluates recency and ages cells out even when
-  // no new subscription update arrives (a cell stops pulsing ~1s after its huddle moves off it).
-  const [liveTick, setLiveTick] = useState(0);
 
   const markerKeys = markerDefs.map((d) => d.key).join('\0');
 
@@ -94,29 +86,6 @@ export function useMapboxMap({
 
   useEffect(() => {
     setMounted(true);
-  }, []);
-
-  // Spreading/contracting animation for heatmap radius
-  useEffect(() => {
-    let animationFrameId: number;
-    let startTime = Date.now();
-
-    const animate = () => {
-      const elapsed = (Date.now() - startTime) % 3000;
-      const progress = elapsed / 3000;
-      const spread = 0.7 + Math.sin(progress * Math.PI * 2) * 0.3;
-      setHeatmapPulse(spread);
-      animationFrameId = requestAnimationFrame(animate);
-    };
-
-    animationFrameId = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animationFrameId);
-  }, []);
-
-  // Re-evaluate "live" cell membership once a second (recency is time-based).
-  useEffect(() => {
-    const id = setInterval(() => setLiveTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
   }, []);
 
   // Create the map once.
@@ -158,17 +127,17 @@ export function useMapboxMap({
     };
   }, []);
 
-  // Warmth heatmap: ensure source+layer, refresh data when `heat` changes, toggle opacity.
+  // Warmth heatmap: a single STEADY layer (NO pulse). Ensure source+layer, refresh data when
+  // `heat` changes, toggle opacity. The heatmap never animates — it just shows the huddle heat.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
     const apply = () => {
-      // Base: the whole field, STEADY (no pulse) — persisted trails + hubs read calm.
-      const baseData = heatGeoJSON(heat);
-      const baseSrc = map.getSource(WARMTH_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
-      if (!baseSrc) map.addSource(WARMTH_SOURCE_ID, { type: 'geojson', data: baseData });
-      else baseSrc.setData(baseData);
+      const data = heatGeoJSON(heat);
+      const src = map.getSource(WARMTH_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+      if (!src) map.addSource(WARMTH_SOURCE_ID, { type: 'geojson', data });
+      else src.setData(data);
       if (!map.getLayer(WARMTH_LAYER_ID)) {
         map.addLayer({
           id: WARMTH_LAYER_ID,
@@ -187,48 +156,11 @@ export function useMapboxMap({
         map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-radius', HEAT_RADIUS_STEADY);
         map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-opacity', warmthEnabled ? 0.85 : 0);
       }
-
-      // Live overlay: only cells updated within LIVE_WINDOW_MS (a huddle is depositing there NOW).
-      // This is the layer the pulse effect animates — so only the trail head + active hubs breathe.
-      const now = Date.now();
-      const liveData = heatGeoJSON(heat.filter((h) => now - h.lastUpdatedMs < LIVE_WINDOW_MS));
-      const liveSrc = map.getSource(WARMTH_LIVE_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
-      if (!liveSrc) map.addSource(WARMTH_LIVE_SOURCE_ID, { type: 'geojson', data: liveData });
-      else liveSrc.setData(liveData);
-      if (!map.getLayer(WARMTH_LIVE_LAYER_ID)) {
-        map.addLayer({
-          id: WARMTH_LIVE_LAYER_ID,
-          type: 'heatmap',
-          source: WARMTH_LIVE_SOURCE_ID,
-          slot: 'top',
-          paint: {
-            'heatmap-weight': HEAT_WEIGHT,
-            'heatmap-intensity': HEAT_INTENSITY,
-            'heatmap-color': HEAT_COLOR,
-            'heatmap-radius': HEAT_RADIUS_STEADY, // animated by the pulse effect below
-            'heatmap-opacity': 0, // set by the pulse effect
-          },
-        });
-      }
     };
 
     if (map.isStyleLoaded()) apply();
     else map.once('idle', apply);
-  }, [mapReady, heat, warmthEnabled, liveTick]);
-
-  // Pulse ONLY the live overlay — radius breathes and opacity throbs — so the pulse reads as
-  // "activity happening here now". Paint-only updates (no data churn), driven by the rAF.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady || !map.getLayer(WARMTH_LIVE_LAYER_ID)) return;
-    const p = heatmapPulse || 1;
-    const pulsedRadius: mapboxgl.ExpressionSpecification =
-      ['interpolate', ['linear'], ['zoom'], 10, 15 * p, 12, 35 * p, 14, 65 * p, 15, 90 * p, 16, 120 * p, 17, 160 * p];
-    map.setPaintProperty(WARMTH_LIVE_LAYER_ID, 'heatmap-radius', pulsedRadius);
-    // heatmapPulse ∈ [0.7,1.0] → throb opacity 0.5..0.9 for a clear but gentle breathe.
-    const throb = 0.5 + ((p - 0.7) / 0.3) * 0.4;
-    map.setPaintProperty(WARMTH_LIVE_LAYER_ID, 'heatmap-opacity', warmthEnabled ? Math.max(0, Math.min(0.9, throb)) : 0);
-  }, [mapReady, heatmapPulse, warmthEnabled]);
+  }, [mapReady, heat, warmthEnabled]);
 
   // Sync mapbox markers to the current marker defs (add new, remove gone).
   useEffect(() => {

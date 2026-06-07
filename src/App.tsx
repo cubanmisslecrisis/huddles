@@ -164,6 +164,7 @@ function App() {
         isMe: myHex ? hexes.includes(myHex) : false,
         merged: true,
         heat: h.warmth,
+        memberKeys: hexes,
         selection: { kind: 'huddle', id: h.id.toString() },
       });
     }
@@ -181,6 +182,7 @@ function App() {
         isMe: hex === myHex,
         merged: false,
         heat: 0,
+        memberKeys: [],
         selection: { kind: 'friend', id: hex },
       });
     }
@@ -191,14 +193,7 @@ function App() {
     () =>
       heatCells
         .filter((c) => myRoomId !== undefined && c.roomId === myRoomId)
-        .map((c) => ({
-          lat: c.lat,
-          lng: c.lng,
-          weight: c.weight,
-          // lastUpdatedAt is refreshed only when a huddle deposits here (decay preserves it),
-          // so the map can tell "live" cells (pulse) from persisted trail/history (steady).
-          lastUpdatedMs: Number(c.lastUpdatedAt.microsSinceUnixEpoch / 1000n),
-        })),
+        .map((c) => ({ lat: c.lat, lng: c.lng, weight: c.weight })),
     [heatCells, myRoomId]
   );
 

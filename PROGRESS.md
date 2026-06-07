@@ -89,21 +89,19 @@ banners in `PROJECT.md` / `HUDDLE_LOGIC.md` / `TECHNICAL_PLAN.md`).
 ### Demo & polish
 - ✅ **Demo bots + huddle-driven heatmap** (`bot` table + scheduled `botTick` in
   `spacetimedb/src/index.ts`). Auto-spawns in the `demo` room once a real user has a fix
-  (anchored to that user's location, NYC fallback comes free via the client): 2 **roamer** groups
-  of 3 that walk shared loops together (moving huddles → heat **trails**) + 6 **wanderer** bots
-  spread ~1km (solo, no heat) + 1 **resident** group of 3 sitting together elsewhere (standing
-  huddle → persistent hot hub). Bots write only `presence` (engine clusters them with **no**
-  special-casing); `botTick` config-refreshes the fleet on a publish; despawns when no real user
-  has been seen within the stale window (heat is **not** wiped on despawn).
-- ✅ **Heat is huddle-driven, trails, and persists.** Heat is generated **only** by `active`
-  huddles — **each member deposits at their own position** each tick (`addHeat`,
-  `HEAT_PER_HUDDLE_TICK`) — so a moving huddle lays a trail and a standing one builds a hub; a
-  lone heartbeat/solo bot makes none. Cells (~90 m, `HEAT_CELL_DEGREES=0.0008`) accumulate (cap
-  `HEAT_MAX=40`), **slow-fade** (`×0.97`/10s, ~4-min half-life), and are **never bulk-cleared**
-  (persist through teardown/republish). **Client (`useMapboxMap`):** steady base heatmap +
-  **pulsing `activity-heat-live` overlay** of only recently-updated cells (`LIVE_WINDOW_MS`), so
-  the pulse signals live activity (trail head + hubs), not decoration. Verified locally: solo user
-  = 0 heat; roamer cells advance with a gradient; resident hub pins at cap; trails linger.
+  (anchored to that user's location, NYC fallback comes free via the client): `BOT_GROUP_COUNT`
+  **group** clusters (3 members each holding a fixed **triangle formation** → member-shaped heat,
+  no circling) + 6 **wanderer** bots spread ~1km (solo, no heat). Bots write only `presence`
+  (engine clusters them with **no** special-casing); `botTick` config-refreshes the fleet on a
+  publish; despawns when no real user has been seen within the stale window (heat **not** wiped).
+- ✅ **Heat is huddle-driven and member-shaped (not circular).** Heat is generated **only** by
+  `active` huddles — each tick `addHeat` deposits at the **centroid** (hot middle) and at **each
+  member's position** (corners), so a huddle's heat is its footprint: a rounded triangle for 3,
+  hottest in the center; a lone heartbeat/solo bot makes none. Cells (~45 m,
+  `HEAT_CELL_DEGREES=0.0004`) accumulate (cap `HEAT_MAX=40`), **slow-fade** (`×0.97`/10s, ~4-min
+  half-life), **never bulk-cleared**. **Client (`useMapboxMap`):** a single **steady** heatmap
+  layer (tight render radius so the shape resolves) — **no pulsing** (the heatmap never animates).
+  (Bots walking in circles previously made ring-shaped heat — fixed by holding a formation.)
 - ✅ Two-client end-to-end (both share a location → huddle forms/warms/cools): verified via
   CLI + the live browser client (forming → activated → cooling → ended cycles in the feed).
 - ⬜ Purge remaining zone/tap-to-move prose from the spec docs (banners cover it for now);
@@ -118,12 +116,12 @@ Phase 2 north star (see `PROJECT.md` "North Star v2" and `TECHNICAL_PLAN.md`
 is a later step). Reuses the Phase-1 proximity engine.
 
 ### Backend (`spacetimedb/src/index.ts`)
-- ✅ `heat_cell(roomId, cellKey, lat, lng, weight, lastUpdatedAt)` — ~90 m grid activity
+- ✅ `heat_cell(roomId, cellKey, lat, lng, weight, lastUpdatedAt)` — ~45 m grid activity
   accumulation (index `by_room_cell`). Written **only** by the huddle engine via `addHeat`
-  (each `active`-huddle **member at their own position** each tick → trails, clamped to
-  `HEAT_MAX`); `decayHuddles` **slow-fades** it (`×0.97`/10s, deletes fully-cold cells), never
-  bulk-cleared. `lastUpdatedAt` (refreshed on deposit, preserved by decay) drives the client's
-  live-vs-trail pulse. Heat tracks huddles, not raw movement. Published + verified on maincloud.
+  (each `active` huddle deposits at its **centroid + each member position** each tick → a
+  member-shaped footprint, clamped to `HEAT_MAX`); `decayHuddles` **slow-fades** it (`×0.97`/10s,
+  deletes fully-cold cells), never bulk-cleared. `lastUpdatedAt` (refreshed on deposit, preserved
+  by decay) drives the client's live-vs-history pulse. Heat tracks huddles, not raw movement.
 - ⬜ `visited_cell(identity, roomId, cellKey, firstSeenAt, lastSeenAt, count)` — drives the
   "city explored %" metric.
 - ⬜ `recommendation(identity, roomId, lat, lng, placeLabel, sentiment, note, createdAt)`
@@ -148,10 +146,13 @@ path alias added. Structure: `src/components/{map,shell,panels,lens,flows,ui}` +
   layer's opacity throbs via an rAF `heatmapPulse` (`useMapboxMap`), so the pulse comes from
   the heatmap. (An earlier separate warmth-driven `huddle-heat` overlay was removed as
   redundant once the heatmap itself pulses.)
-- ✅ **Avatar markers are static** — non-ended `huddle` w/ 2+ active members → one merged
-  cluster bubble (count, fixed warm color, no pulse); solo people are `Avatar` discs (hashed
-  color + initial — no photos). Verified live in-browser (real "Huddle of 2" + 440 m friend
-  distance).
+- ✅ **Avatar markers** — non-ended `huddle` w/ 2+ active members → one merged cluster (now a
+  **member-photo stack** + count badge over the warmth glow/pulse); solo people are photo discs.
+  Verified live in-browser (real "Huddle of 2" + 440 m friend distance).
+- ✅ **Visual-polish pass synced from the skeleton's newer cut:** **claymorphism** (`shadow-clay`
+  utility + `clay` Button variant + `lib/ui-styles.ts`, no base-ui added) and **demo avatar
+  photos** (`photoFor`/`Avatar` over a `public/avatars/` pool, hashed color as ring + fallback;
+  current user = `ME_PHOTO`). `tsc -b` + `vite build` clean.
 - ✅ **Lenses** (bottom nav island): **Map** (Around-you / Recommended / Active-huddles sheet),
   **Activity** (real `event` feed — `type`→icon/color, `message`, relative time),
   **Friends** (`presence` list w/ status + distance + Ping), **Wrapped** (weekly huddle stats — top friend, hours together, fun facts).

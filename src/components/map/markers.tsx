@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { Music, Camera, Heart, Bookmark, Star } from 'lucide-react';
-import { colorFor, initialOf } from '@/lib/avatar';
+import { colorFor, initialOf, photoFor, ME_PHOTO } from '@/lib/avatar';
 import { pinColor, onYellow } from '@/lib/theme';
 import type { StaticPin } from '@/lib/places-data';
 
@@ -17,10 +18,12 @@ export type MapAvatar = {
   isMe: boolean;
   merged: boolean;
   heat: number;
+  // Member identity hexes for a merged huddle (drives the photo cluster); empty for solo.
+  memberKeys: string[];
   selection: { kind: 'friend' | 'huddle'; id: string };
 };
 
-export type HeatPoint = { lat: number; lng: number; weight: number; lastUpdatedMs: number };
+export type HeatPoint = { lat: number; lng: number; weight: number };
 
 // A static place pin with coordinates already resolved against the user's location.
 export type ResolvedPin = StaticPin & { lat: number; lng: number };
@@ -57,6 +60,21 @@ function Tail({ color }: { color: string }) {
   );
 }
 
+// A demo photo clipped to the disc; falls back to nothing (so the parent's hashed-color
+// disc + initial show) if the image is missing or fails to load.
+function DiscPhoto({ src }: { src: string }) {
+  const [broken, setBroken] = useState(false);
+  if (broken) return null;
+  return (
+    <img
+      src={src}
+      alt=""
+      className="absolute inset-0 h-full w-full rounded-full object-cover"
+      onError={() => setBroken(true)}
+    />
+  );
+}
+
 export function FriendMarker({
   avatar,
   selected,
@@ -69,6 +87,7 @@ export function FriendMarker({
   onSelect: () => void;
 }) {
   const color = avatar.isMe ? MY_BLUE : colorFor(avatar.key);
+  const photo = avatar.isMe ? ME_PHOTO : photoFor(avatar.key);
   return (
     <button
       onClick={onSelect}
@@ -78,7 +97,7 @@ export function FriendMarker({
     >
       <span className="relative block transition-transform duration-200 group-hover:-translate-y-1">
         <span
-          className="flex items-center justify-center rounded-full border-2 border-white font-bold text-white"
+          className="relative flex items-center justify-center overflow-hidden rounded-full border-2 border-white font-bold text-white"
           style={{
             width: 42,
             height: 42,
@@ -93,8 +112,9 @@ export function FriendMarker({
           }}
         >
           {initialOf(avatar.name)}
+          <DiscPhoto src={photo} />
         </span>
-        <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-green" />
+        <span className="absolute bottom-0 right-0 z-10 h-3.5 w-3.5 rounded-full border-2 border-white bg-green" />
         <Tail color={color} />
       </span>
     </button>
@@ -136,18 +156,29 @@ export function HuddleMarker({
           />
         )}
         <span
-          className="relative flex items-center justify-center rounded-full border-2 border-white font-black text-white"
+          className="relative flex items-center rounded-full p-1"
           style={{
-            width: 46,
-            height: 46,
             background: hot,
-            fontSize: 18,
             boxShadow: selected
               ? `0 0 0 6px color-mix(in oklab, ${hot} 30%, transparent), 0 8px 18px rgba(20,20,20,0.22)`
               : `0 0 ${(8 + 18 * n).toFixed(0)}px ${hot}, 0 8px 18px rgba(20,20,20,0.22)`,
           }}
         >
-          {avatar.count}
+          {(avatar.memberKeys.length ? avatar.memberKeys : [avatar.key]).slice(0, 3).map((k, i) => (
+            <span
+              key={k}
+              className="relative flex items-center justify-center overflow-hidden rounded-full border-2 border-white first:ml-0 -ml-3.5"
+              style={{ width: 34, height: 34, background: colorFor(k), zIndex: 3 - i }}
+            >
+              <DiscPhoto src={photoFor(k)} />
+            </span>
+          ))}
+          <span
+            className="absolute -right-1.5 -top-1.5 z-10 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white px-1 text-xs font-black text-white"
+            style={{ background: hot }}
+          >
+            {avatar.count}
+          </span>
         </span>
         <Tail color={hot} />
       </span>
