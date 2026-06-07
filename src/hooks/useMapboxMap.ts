@@ -66,6 +66,7 @@ export function useMapboxMap({
   const [mapReady, setMapReady] = useState(false);
   const [tokenMissing, setTokenMissing] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [heatmapPulse, setHeatmapPulse] = useState(0);
 
   const markerKeys = markerDefs.map((d) => d.key).join('\0');
 
@@ -82,6 +83,23 @@ export function useMapboxMap({
     setMounted(true);
   }, []);
 
+  // Pulsing animation for heatmap
+  useEffect(() => {
+    let animationFrameId: number;
+    let startTime = Date.now();
+
+    const animate = () => {
+      const elapsed = (Date.now() - startTime) % 2500;
+      const progress = elapsed / 2500;
+      const pulse = 0.4 + Math.sin(progress * Math.PI * 2) * 0.45;
+      setHeatmapPulse(pulse);
+      animationFrameId = requestAnimationFrame(animate);
+    };
+
+    animationFrameId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, []);
+
   // Create the map once.
   useEffect(() => {
     if (!TOKEN) {
@@ -96,8 +114,8 @@ export function useMapboxMap({
       style: 'mapbox://styles/mapbox/standard',
       center: FALLBACK,
       zoom: 12,
-      pitch: 60,
-      bearing: -20,
+      pitch: 0,
+      bearing: 0,
       antialias: true,
       attributionControl: false,
     });
@@ -141,8 +159,10 @@ export function useMapboxMap({
           source: WARMTH_SOURCE_ID,
           slot: 'top',
           paint: {
-            'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 0, 0, 2, 0.4, 14, 1],
-            'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 11, 1, 15, 1.8, 17, 2.4],
+            // Feature branch's "dramatic" tuning + rAF opacity pulse (heatmapPulse), but
+            // recolored to our warm-orange palette instead of the rainbow gradient.
+            'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 0, 0, 0.5, 0.3, 1, 0.8, 2, 1],
+            'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 12, 1.2, 14, 2.0, 16, 3.0, 17, 4.0],
             'heatmap-color': [
               'interpolate',
               ['linear'],
@@ -160,18 +180,18 @@ export function useMapboxMap({
               1,
               'rgba(200, 55, 10, 1)',
             ],
-            'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 11, 34, 15, 82, 17, 125],
-            'heatmap-opacity': warmthEnabled ? 0.85 : 0,
+            'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 10, 15, 12, 35, 14, 65, 15, 90, 16, 120, 17, 160],
+            'heatmap-opacity': warmthEnabled ? heatmapPulse : 0,
           },
         });
       } else {
-        map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-opacity', warmthEnabled ? 0.85 : 0);
+        map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-opacity', warmthEnabled ? heatmapPulse : 0);
       }
     };
 
     if (map.isStyleLoaded()) apply();
     else map.once('idle', apply);
-  }, [mapReady, heat, warmthEnabled]);
+  }, [mapReady, heat, warmthEnabled, heatmapPulse]);
 
   // Pulsing "huddle of heat": a second heatmap layer above the ambient one, sourced from
   // active huddle centroids, its per-point weight animated (throb ∝ warmth) via rAF. Blends
@@ -276,13 +296,13 @@ export function useMapboxMap({
     const map = mapRef.current;
     if (!map || !mapReady || !myLoc || recenteredRef.current) return;
     recenteredRef.current = true;
-    map.flyTo({ center: [myLoc.lng, myLoc.lat], zoom: DEFAULT_ZOOM, pitch: 60, bearing: -20, duration: 1200 });
+    map.flyTo({ center: [myLoc.lng, myLoc.lat], zoom: DEFAULT_ZOOM, pitch: 0, bearing: 0, duration: 1200 });
   }, [mapReady, myLoc]);
 
   const recenter = useCallback(() => {
     const map = mapRef.current;
     const c = myLoc ? ([myLoc.lng, myLoc.lat] as [number, number]) : FALLBACK;
-    map?.flyTo({ center: c, zoom: DEFAULT_ZOOM, pitch: 60, bearing: -20, duration: 900 });
+    map?.flyTo({ center: c, zoom: DEFAULT_ZOOM, pitch: 0, bearing: 0, duration: 900 });
   }, [myLoc]);
 
   const flyTo = useCallback((lat: number, lng: number) => {
