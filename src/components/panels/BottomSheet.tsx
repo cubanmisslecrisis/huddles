@@ -91,7 +91,7 @@ export function BottomSheet({
           {header && <div className="px-4 pb-1 pt-3">{header}</div>}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(env(safe-area-inset-bottom,0px)+112px)] pt-2">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(env(safe-area-inset-bottom,0px)+220px)] pt-2">
           {children}
         </div>
       </div>
