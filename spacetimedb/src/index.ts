@@ -176,10 +176,10 @@ const score = table(
   }
 );
 
-// User-created notes on the map — saved places with text.
-const note = table(
+// User-saved places on the map — location-tagged places with optional notes.
+const savedPlace = table(
   {
-    name: 'note',
+    name: 'saved_place',
     public: true,
     indexes: [{ accessor: 'by_room', algorithm: 'btree', columns: ['roomId'] }],
   },
@@ -187,7 +187,8 @@ const note = table(
     id: t.u64().primaryKey().autoInc(),
     roomId: t.u64(),
     identity: t.identity(),
-    text: t.string(),
+    placeName: t.string(),
+    note: t.option(t.string()),
     lat: t.f64(),
     lng: t.f64(),
     createdAt: t.timestamp(),
@@ -224,7 +225,7 @@ const spacetimedb = schema({
   huddleMember,
   event,
   score,
-  note,
+  savedPlace,
   // scheduled
   huddleTickTimer,
   presenceTickTimer,
@@ -439,29 +440,32 @@ export const pingNearby = spacetimedb.reducer((ctx) => {
   });
 });
 
-// Add a note on the map at the current location.
-export const addNote = spacetimedb.reducer(
-  { text: t.string() },
-  (ctx, { text }) => {
+// Save a place on the map at the current location.
+export const savePlace = spacetimedb.reducer(
+  { placeName: t.string(), note: t.option(t.string()) },
+  (ctx, { placeName, note }) => {
     const p = ctx.db.presence.identity.find(ctx.sender);
     if (!p) throw new SenderError('Join a room first');
     if (!p.hasFix) throw new SenderError('Waiting for your location…');
 
-    const trimmedText = text.trim();
-    if (!trimmedText) throw new SenderError('Note cannot be empty');
+    const trimmedName = placeName.trim();
+    if (!trimmedName) throw new SenderError('Place name cannot be empty');
 
-    ctx.db.note.insert({
+    const trimmedNote = note?.trim();
+
+    ctx.db.savedPlace.insert({
       id: 0n,
       roomId: p.roomId,
       identity: ctx.sender,
-      text: trimmedText,
+      placeName: trimmedName,
+      note: trimmedNote ? trimmedNote : null,
       lat: p.lat,
       lng: p.lng,
       createdAt: ctx.timestamp,
     });
 
     const who = ctx.db.user.identity.find(ctx.sender)?.name ?? 'Someone';
-    emitEvent(ctx, p.roomId, 'note', `${who} added a note`, {
+    emitEvent(ctx, p.roomId, 'place_saved', `${who} saved ${trimmedName}`, {
       lat: p.lat,
       lng: p.lng,
     });

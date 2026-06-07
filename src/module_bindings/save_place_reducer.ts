@@ -11,5 +11,6 @@ import {
 } from "spacetimedb";
 
 export default {
-  text: __t.string(),
+  placeName: __t.string().name("place_name"),
+  note: __t.option(__t.string()),
 };
