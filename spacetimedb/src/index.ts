@@ -176,6 +176,24 @@ const score = table(
   }
 );
 
+// User-created notes on the map — saved places with text.
+const note = table(
+  {
+    name: 'note',
+    public: true,
+    indexes: [{ accessor: 'by_room', algorithm: 'btree', columns: ['roomId'] }],
+  },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    roomId: t.u64(),
+    identity: t.identity(),
+    text: t.string(),
+    lat: t.f64(),
+    lng: t.f64(),
+    createdAt: t.timestamp(),
+  }
+);
+
 // Scheduled tables (the clock). Each targets a reducer below via a lazy thunk.
 const huddleTickTimer = table(
   { name: 'huddle_tick_timer', scheduled: (): any => huddleTick },
@@ -206,6 +224,7 @@ const spacetimedb = schema({
   huddleMember,
   event,
   score,
+  note,
   // scheduled
   huddleTickTimer,
   presenceTickTimer,
@@ -419,6 +438,35 @@ export const pingNearby = spacetimedb.reducer((ctx) => {
     lng: p.lng,
   });
 });
+
+// Add a note on the map at the current location.
+export const addNote = spacetimedb.reducer(
+  { text: t.string() },
+  (ctx, { text }) => {
+    const p = ctx.db.presence.identity.find(ctx.sender);
+    if (!p) throw new SenderError('Join a room first');
+    if (!p.hasFix) throw new SenderError('Waiting for your location…');
+
+    const trimmedText = text.trim();
+    if (!trimmedText) throw new SenderError('Note cannot be empty');
+
+    ctx.db.note.insert({
+      id: 0n,
+      roomId: p.roomId,
+      identity: ctx.sender,
+      text: trimmedText,
+      lat: p.lat,
+      lng: p.lng,
+      createdAt: ctx.timestamp,
+    });
+
+    const who = ctx.db.user.identity.find(ctx.sender)?.name ?? 'Someone';
+    emitEvent(ctx, p.roomId, 'note', `${who} added a note`, {
+      lat: p.lat,
+      lng: p.lng,
+    });
+  }
+);
 
 // ═════════════════════════════════════════════════════════════════════════════
 // PART 2 — engine + scheduled reducers
