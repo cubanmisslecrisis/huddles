@@ -9,7 +9,7 @@ export function BottomNavIsland({
 }) {
   return (
     <div
-      className="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex items-end px-4"
+      className="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex items-end justify-center gap-2 px-4"
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
     >
       <nav

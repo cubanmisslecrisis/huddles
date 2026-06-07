@@ -46,8 +46,12 @@ The server is SpacetimeDB reducers operating over shared `presence`, `huddle`, `
   garbage-collect ended huddles — they're the history.
 - **Warmth = activity intensity (heatmap).** Phase-1 `huddle.warmth` (and the
   warmth-per-tick) is reinterpreted as *how much social activity happened here*. Phase 2
-  aggregates this per **map cell** (geohash/grid) into a `heat_cell` weight that the Mapbox
-  heatmap renders. Decay still applies so the heatmap reflects *recent* activity.
+  aggregates this per **map cell** (~45 m grid) into a `heat_cell` weight that the Mapbox
+  heatmap renders. Heat is written **only** by `active` huddles — at the **centroid + each
+  member's position** each tick, so a huddle's heat is the members' footprint (a rounded
+  triangle for 3, hottest in the middle) — never by lone movement. It **slow-fades** over
+  minutes and is never bulk-cleared, so the map shows where people hung out and persists after
+  they leave. The client renders a single **steady** heatmap layer (no pulsing).
 - **Exploration.** Each fresh location fix marks a `visited_cell` for that user; the count of
   distinct cells → a "city explored %". Independent of huddles (you explore alone too).
 - **Recommendations.** A separate, opinion layer: a user marks a place

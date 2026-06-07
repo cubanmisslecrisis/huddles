@@ -7,6 +7,8 @@ import { relativeTimeFromMicros } from '@/lib/avatar';
 import { huddleStatusLabel } from '@/lib/theme';
 import { Avatar } from '@/components/Avatar';
 import { Input } from '@/components/ui/input';
+import { huddleInput } from '@/lib/ui-styles';
+import { cn } from '@/lib/utils';
 
 type Result = { id: string; title: string; subtitle: string; colorKey: string; selection: Exclude<Selection, null> };
 type Group = { label: string; items: Result[] };
@@ -88,7 +90,7 @@ export function SearchModal({
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-card pt-[env(safe-area-inset-top,0px)]">
       <div className="flex flex-col gap-3 p-4">
-        <div className="relative flex items-center">
+        <div className="huddle-search-container relative flex items-center rounded-2xl transition-shadow">
           <Search className="pointer-events-none absolute left-4 z-10 h-5 w-5 text-muted-foreground" />
           <Input
             autoFocus
@@ -96,7 +98,7 @@ export function SearchModal({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search friends, huddles, places…"
-            className="h-12 rounded-2xl pl-12 pr-16 text-sm"
+            className={cn(huddleInput, 'w-full pl-12 pr-16')}
           />
           <button
             onClick={() => {

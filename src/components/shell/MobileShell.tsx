@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { Search, Plus } from 'lucide-react';
 import { type MapControls } from '@/components/map/MapCanvas';
 import { GoogleMapsStyle } from '@/components/map/GoogleMapsStyle';
 import { MapStatusChips, MapFilterChips } from '@/components/map/MapChips';
@@ -11,6 +10,8 @@ import { FriendsPanel } from '@/components/lens/FriendsPanel';
 import { WrappedPanel } from '@/components/lens/WrappedPanel';
 import { DetailPanel } from '@/components/DetailPanel';
 import { Avatar } from '@/components/Avatar';
+import { ME_PHOTO } from '@/lib/avatar';
+import { Search, Plus } from 'lucide-react';
 import type { Lens } from '@/lib/nav-tabs';
 import type { LayerKey, FilterKey } from '@/lib/places-data';
 import type { MapAvatar, HeatPoint, Selection } from '@/components/map/markers';
@@ -122,29 +123,10 @@ export function MobileShell({
             nearby={friends.filter((f) => f.online).map((f) => ({ key: f.key, name: f.name }))}
           />
         </div>
-        <button onClick={onOpenProfile} aria-label="Your profile" className="pointer-events-auto shrink-0 rounded-full">
-          <Avatar name={me.name} colorKey={me.key} size={44} className="ring-2 ring-yellow ring-offset-2 ring-offset-background" />
-        </button>
-      </div>
-
-      <BottomSheet
-        state={sheetState}
-        onStateChange={onSheetStateChange}
-        header={
-          lens === 'map' && !selection ? <MapFilterChips active={filter} onChange={onFilter} /> : undefined
-        }
-      >
-        {sheetContent}
-      </BottomSheet>
-
-      <BottomNavIsland active={lens} onChange={onChangeLens} />
-
-      {/* FABs: positioned from the h-dvh root so bottom is relative to the actual screen */}
-      <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex justify-end px-4"
-        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px + 68px + 14px)' }}
-      >
-        <div className="pointer-events-auto flex flex-col items-center gap-2.5">
+        <div className="pointer-events-auto flex shrink-0 flex-col items-end gap-2.5">
+          <button onClick={onOpenProfile} aria-label="Your profile" className="rounded-full">
+            <Avatar name={me.name} colorKey={me.key} photo={ME_PHOTO} size={44} className="ring-2 ring-yellow ring-offset-2 ring-offset-background" />
+          </button>
           <button
             onClick={onSearch}
             aria-label="Search"
@@ -161,6 +143,18 @@ export function MobileShell({
           </button>
         </div>
       </div>
+
+      <BottomSheet
+        state={sheetState}
+        onStateChange={onSheetStateChange}
+        header={
+          lens === 'map' && !selection ? <MapFilterChips active={filter} onChange={onFilter} /> : undefined
+        }
+      >
+        {sheetContent}
+      </BottomSheet>
+
+      <BottomNavIsland active={lens} onChange={onChangeLens} />
     </div>
   );
 }

@@ -11,8 +11,33 @@ const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
 const FALLBACK: [number, number] = [-73.9857, 40.7484];
 const DEFAULT_ZOOM = 14.5;
 
+// Heatmap = the full huddle-heat field, rendered as a single STEADY layer (no pulsing).
 const WARMTH_SOURCE_ID = 'activity-heat';
 const WARMTH_LAYER_ID = 'activity-heat-layer';
+
+// Shared heatmap paint (weight ramp 0..40, zoom intensity, warm→cool color), used by both layers.
+const HEAT_WEIGHT: mapboxgl.ExpressionSpecification =
+  ['interpolate', ['linear'], ['get', 'weight'], 0, 0, 4, 0.2, 12, 0.45, 24, 0.72, 40, 1];
+const HEAT_INTENSITY: mapboxgl.ExpressionSpecification =
+  ['interpolate', ['linear'], ['zoom'], 10, 0.5, 12, 1.2, 14, 2.0, 16, 3.0, 17, 4.0];
+const HEAT_COLOR: mapboxgl.ExpressionSpecification = [
+  'interpolate', ['linear'], ['heatmap-density'],
+  0, 'rgba(255, 255, 0, 0)',
+  0.08, 'rgba(255, 200, 0, 0.4)',
+  0.15, 'rgba(255, 140, 0, 0.6)',
+  0.25, 'rgba(255, 80, 20, 0.75)',
+  0.35, 'rgba(255, 40, 100, 0.85)',
+  0.5, 'rgba(200, 20, 200, 0.9)',
+  0.65, 'rgba(100, 50, 255, 0.92)',
+  0.8, 'rgba(0, 150, 255, 0.95)',
+  0.9, 'rgba(0, 255, 200, 0.97)',
+  1, 'rgba(0, 255, 150, 1)',
+];
+// Steady (un-pulsed) radius ramp by zoom; the live layer multiplies this by the pulse.
+// Kept tight so a huddle's heat resolves its members' SHAPE (a rounded triangle for 3) rather
+// than blurring every cluster into one big circle. Raise these for softer/blobbier heat.
+const HEAT_RADIUS_STEADY: mapboxgl.ExpressionSpecification =
+  ['interpolate', ['linear'], ['zoom'], 10, 8, 12, 16, 14, 28, 15, 40, 16, 55, 17, 75];
 
 function heatGeoJSON(heat: HeatPoint[]): GeoJSON.FeatureCollection {
   return {
@@ -102,8 +127,8 @@ export function useMapboxMap({
     };
   }, []);
 
-  // Warmth heatmap: tiny radius so each kernel is microscopic; density naturally
-  // accumulates color where activity overlaps — that's how a heatmap works.
+  // Warmth heatmap: a single STEADY layer (NO pulse). Ensure source+layer, refresh data when
+  // `heat` changes, toggle opacity. The heatmap never animates — it just shows the huddle heat.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
@@ -111,11 +136,8 @@ export function useMapboxMap({
     const apply = () => {
       const data = heatGeoJSON(heat);
       const src = map.getSource(WARMTH_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
-      if (!src) {
-        map.addSource(WARMTH_SOURCE_ID, { type: 'geojson', data });
-      } else {
-        src.setData(data);
-      }
+      if (!src) map.addSource(WARMTH_SOURCE_ID, { type: 'geojson', data });
+      else src.setData(data);
       if (!map.getLayer(WARMTH_LAYER_ID)) {
         map.addLayer({
           id: WARMTH_LAYER_ID,
@@ -123,28 +145,15 @@ export function useMapboxMap({
           source: WARMTH_SOURCE_ID,
           slot: 'top',
           paint: {
-            'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 0, 0, 0.5, 0.3, 1, 0.8, 2, 1],
-            'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 2, 12, 4, 14, 7, 16, 12, 17, 18],
-            'heatmap-color': [
-              'interpolate',
-              ['linear'],
-              ['heatmap-density'],
-              0,    'rgba(255, 255, 0, 0)',
-              0.08, 'rgba(255, 200, 0, 0.4)',
-              0.15, 'rgba(255, 140, 0, 0.6)',
-              0.25, 'rgba(255, 80, 20, 0.75)',
-              0.35, 'rgba(255, 40, 100, 0.85)',
-              0.5,  'rgba(200, 20, 200, 0.9)',
-              0.65, 'rgba(100, 50, 255, 0.92)',
-              0.8,  'rgba(0, 150, 255, 0.95)',
-              0.9,  'rgba(0, 255, 200, 0.97)',
-              1,    'rgba(0, 255, 150, 1)',
-            ],
-            'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 10, 3, 12, 5, 14, 8, 15, 12, 16, 20, 17, 35],
+            'heatmap-weight': HEAT_WEIGHT,
+            'heatmap-intensity': HEAT_INTENSITY,
+            'heatmap-color': HEAT_COLOR,
+            'heatmap-radius': HEAT_RADIUS_STEADY,
             'heatmap-opacity': warmthEnabled ? 0.85 : 0,
           },
         });
       } else {
+        map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-radius', HEAT_RADIUS_STEADY);
         map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-opacity', warmthEnabled ? 0.85 : 0);
       }
     };

@@ -1,6 +1,6 @@
-// Stable per-key color + initials so a given user always looks the same. We have no
-// photo avatars, so this stands in for every avatar/thumbnail the design shows.
-// PALETTE + colorFor are lifted from the old LiveMap so map markers and list rows match.
+// Stable per-key color + initials so a given user always looks the same. PALETTE +
+// colorFor are lifted from the old LiveMap so map markers and list rows match. The hashed
+// color also backs the avatar ring + the fallback disc when a photo fails to load.
 
 export const PALETTE = [
   '#6B8FFF',
@@ -15,10 +15,32 @@ export const PALETTE = [
   '#BA68C8',
 ];
 
-export function colorFor(key: string): string {
+// Demo portrait pool (served from public/avatars). We have no real photos, so a key
+// (use a user's identity hex) maps deterministically to one of these — same hashing as
+// colorFor, so a person's photo is stable across markers, lists, and detail panels.
+export const AVATAR_PHOTOS = [
+  '/avatars/maya.png',
+  '/avatars/jake.png',
+  '/avatars/sophie.png',
+  '/avatars/leo.png',
+  '/avatars/nina.png',
+];
+
+// The current user's avatar; passed explicitly so "me" is always consistent.
+export const ME_PHOTO = '/avatars/you.png';
+
+function hashKey(key: string): number {
   let h = 0;
   for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
-  return PALETTE[h % PALETTE.length];
+  return h;
+}
+
+export function colorFor(key: string): string {
+  return PALETTE[hashKey(key) % PALETTE.length];
+}
+
+export function photoFor(key: string): string {
+  return AVATAR_PHOTOS[hashKey(key) % AVATAR_PHOTOS.length];
 }
 
 export function initialOf(name: string): string {

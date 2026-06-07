@@ -165,6 +165,7 @@ function App() {
         isMe: myHex ? hexes.includes(myHex) : false,
         merged: true,
         heat: h.warmth,
+        memberKeys: hexes,
         selection: { kind: 'huddle', id: h.id.toString() },
       });
     }
@@ -182,6 +183,7 @@ function App() {
         isMe: hex === myHex,
         merged: false,
         heat: 0,
+        memberKeys: [],
         selection: { kind: 'friend', id: hex },
       });
     }
@@ -426,7 +428,6 @@ function App() {
         onOpenChange={setShowProfile}
         me={me}
         onLeave={() => leaveRoom().catch(console.error)}
-        friendCount={friends.length}
       />
     </>
     </CharacterKeysContext.Provider>

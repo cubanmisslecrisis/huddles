@@ -35,8 +35,9 @@ Tables in `spacetimedb/src/index.ts` (all `public`, snake_case names, identity-k
 - `joinRoom(name, roomCode)` — create/join room, upsert user, init score, init presence
   (no fix yet), emit `user_joined`.
 - `heartbeatLocation(lat, lng)` — **primary movement input**; update the caller's fix +
-  `last_seen` and bump `heat_cell`. Does **not** run the engine inline — the 1s `huddleTick`
-  is the single clock. Client calls it from `navigator.geolocation.watchPosition` (throttled).
+  `last_seen` only (no heat — heat is huddle-driven, see Heat). Does **not** run the engine
+  inline — the 1s `huddleTick` is the single clock. Client calls it from
+  `navigator.geolocation.watchPosition` (throttled).
 - `leaveRoom()` — mark offline, emit `user_left`. (No inline engine run; the next tick detaches them.)
 - `pingNearby()` — `freshUsersNear(roomId, lat, lng)` within the radius → `ping` event.
 
@@ -57,10 +58,11 @@ Tables in `spacetimedb/src/index.ts` (all `public`, snake_case names, identity-k
 > stay in the one module-level block; new tables are `public` + snake_case like the rest.
 
 ### New / changed backend (`spacetimedb/src/index.ts`)
-- **`heat_cell`** — `room_id` (index), `cell_key` (string geohash/grid id), `weight` f64,
-  `last_updated_at`; unique/index on `(room_id, cell_key)`. Bumped on `heartbeatLocation`
-  and/or the warmth tick; decayed by `decayHuddles` (or a new `decayHeat`). Source for the
-  Mapbox heatmap. Pick a fixed grid (e.g. ~5–7 char geohash) so cell math is deterministic.
+- **`heat_cell`** — `room_id` (index), `cell_key` (string grid id), `weight` f64,
+  `last_updated_at`; index on `(room_id, cell_key)`. Written **only** by the huddle engine
+  (`addHeat` at an `active` huddle's centroid + each member position → member-shaped footprint);
+  slow-faded by `decayHuddles`, never bulk-cleared. Source for the Mapbox heatmap (a single
+  steady layer, no pulse). Fixed ~45 m grid so cell math is deterministic.
 - **`visited_cell`** — `id` pk, `identity`, `room_id`, `cell_key`, `first_seen_at`,
   `last_seen_at`, `count`; index `(room_id, identity)`. Bumped on each fix → "city explored %"
   = distinct cells / target.
@@ -70,8 +72,9 @@ Tables in `spacetimedb/src/index.ts` (all `public`, snake_case names, identity-k
   `wrapped` per-user view/query: their ended huddles → partners (co-members), places
   (centroids), times, and durations (`left_at − joined_at`).
 - **Reducers:** `recommendPlace(lat, lng, placeLabel, sentiment, note)` → insert
-  `recommendation`, emit `place_recommended`. Extend `heartbeatLocation` to bump `heat_cell`
-  + `visited_cell` (deterministic `cellKey(lat,lng)` helper). Optional `wrapped` view.
+  `recommendation`, emit `place_recommended`. (`heat_cell` is already written by the huddle
+  engine; `visited_cell` would be bumped from `heartbeatLocation` via a `cellKey(lat,lng)`
+  helper.) Optional `wrapped` view.
 
 ### Frontend (`src/`)
 - **Map migration:** react-leaflet → **Mapbox GL** (`mapbox-gl` + `react-map-gl`); token via
@@ -442,12 +445,48 @@ Rank users by warmth points (MVP), optionally huddles joined / total huddle time
 
 ---
 
-## Bot Mode (optional, for demo reliability)
+## Bot Mode — IMPLEMENTED (auto-spawn demo bots; heat is huddle-driven)
 
-- create bot `user`/`presence` rows in the same room
-- a scheduled `bot_tick` moves bots to random zones every few seconds via the same `moveToZone` path (seed randomness with `ctx.random`)
-- bots use no special huddle logic
-- UI controls: Spawn Bots / Stop Bots
+> **MODEL UPDATE:** This is live in `spacetimedb/src/index.ts` and supersedes the original
+> sketch below. The old plan said bots move "via the same `moveToZone` path" — that path no
+> longer exists (live-GPS model). Bots write `presence` directly for a synthetic identity (a
+> reducer can't call `heartbeatLocation` for a bot — it keys off `ctx.sender`). Bots do **not**
+> write heat; heat is produced by the huddles they form (see "Heat" below).
+
+- **`bot` table** (`identity` pk, `roomId`, `name`, `kind` ∈ `group`|`wanderer`, `homeLat`,
+  `homeLng`, `paramA` phase, `spawnedAt`). Bot positions live in the normal `presence` table, so
+  the huddle engine treats them as ordinary users — **no special huddle logic**.
+- **Synthetic identities** are minted with `new Identity(ctx.random.bigintInRange(0n, (1n<<256n)-1n))`
+  and persisted, so they're stable across ticks. Real clients never collide.
+- **Scheduled `botTick`** (~1.5s) scoped to the `DEMO_ROOM_CODE` room:
+  - **auto-spawn** once a real (non-bot) user has a recent fix — anchored to that user's
+    location; NYC fallback is free because the client heartbeats NYC-jittered coords when GPS
+    is denied. Spawns `BOT_GROUP_COUNT` **group** clusters (members share the group center as
+    `homeLat/Lng` and hold a fixed **formation** at `paramA` — a triangle for 3, `BOT_FORMATION_SPREAD_M`
+    from the center; the center **wanders** via incommensurate sines — non-circular, never a ring —
+    so the huddle moves and its heat spreads while staying member-shaped) +
+    `BOT_WANDERER_COUNT` **wanderers** (spread in an annulus, orbit solo → no heat).
+  - **move** every bot (deterministic, a pure function of `ctx.timestamp`). No heat is written here.
+  - **config-refresh:** if the live fleet's size/kinds don't match the spawn config, despawn so it
+    respawns fresh next tick — migrates bots on a publish without a destructive wipe.
+  - **auto-despawn** when no real user has been seen within the stale window (RECENCY-based, not
+    connection `status`). Heat is **not** cleared on despawn — it persists and only fades.
+- **No UI controls** — auto-spawn/despawn keyed to the `demo` room. All tuning is in the `BOT_*`
+  constants block.
+
+### Heat (huddle-driven, member-shaped, persistent)
+- The single heat writer `addHeat(ctx, roomId, lat, lng, amount)` is called **only** from the
+  huddle engine: each `huddleTick`, an `active` huddle deposits at its **centroid** (heavier →
+  hot middle) and at **each member's position** (the corners) — so the heat is the huddle's
+  footprint: a rounded polygon (triangle for 3), hottest at the centroid, **not** a circle. A
+  lone heartbeat or solo bot writes **no** heat. Cells are ~45 m (`HEAT_CELL_DEGREES`) so a
+  huddle's shape resolves.
+- `heat_cell` weight accumulates (cap `HEAT_MAX`) and **slow-fades** in `decayHuddles`
+  (`×HEAT_DECAY_FACTOR≈0.97`/10s, ~4-min half-life; deletes fully-cold cells). It is **never
+  bulk-cleared** — huddle heat persists through bot teardown/republish and only fades via decay.
+- **Client (`useMapboxMap`):** a single **steady** heatmap layer (full field, weight `0..HEAT_MAX`
+  gradient, tight render radius so the huddle shape resolves). **No pulsing** — the heatmap never
+  animates.
 
 ---
 

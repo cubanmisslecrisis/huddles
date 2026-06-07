@@ -10,9 +10,11 @@ import HeartbeatLocationReducer from "../heartbeat_location_reducer";
 import JoinRoomReducer from "../join_room_reducer";
 import LeaveRoomReducer from "../leave_room_reducer";
 import PingNearbyReducer from "../ping_nearby_reducer";
+import SavePlaceReducer from "../save_place_reducer";
 
 export type HeartbeatLocationParams = __Infer<typeof HeartbeatLocationReducer>;
 export type JoinRoomParams = __Infer<typeof JoinRoomReducer>;
 export type LeaveRoomParams = __Infer<typeof LeaveRoomReducer>;
 export type PingNearbyParams = __Infer<typeof PingNearbyReducer>;
+export type SavePlaceParams = __Infer<typeof SavePlaceReducer>;
 

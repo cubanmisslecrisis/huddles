@@ -19,6 +19,7 @@ export function SectionHeader({
         <Button
           variant="ghost"
           size="sm"
+          clay={false}
           onClick={onAction}
           className="h-auto px-0 font-semibold text-muted-foreground hover:bg-transparent hover:text-foreground"
         >
@@ -73,7 +74,12 @@ export function AvatarStack({ people, size = 6 }: { people: { key: string; name:
 
 export function FooterButton({ label, onClick }: { label: string; onClick?: () => void }) {
   return (
-    <Button variant="outline" size="lg" onClick={onClick} className="w-full rounded-2xl font-bold">
+    <Button
+      variant="outline"
+      size="lg"
+      onClick={onClick}
+      className="w-full rounded-2xl font-bold border-0 [--clay-color:var(--color-border)]"
+    >
       {label}
       <ChevronRight className="h-4 w-4" />
     </Button>
