@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import type { MapControls } from '@/components/map/MapCanvas';
 import type { MapAvatar, HeatPoint, Selection } from '@/components/map/markers';
-import type { FriendVM, HuddleVM, EventVM, ScoreVM, MeVM } from '@/lib/view';
+import type { FriendVM, HuddleVM, EventVM, MeVM } from '@/lib/view';
 import type { Lens } from '@/lib/nav-tabs';
 import type { SheetState } from '@/components/panels/BottomSheet';
 import { filterToLayers, getPin, type FilterKey, type LayerKey } from '@/lib/places-data';
@@ -399,7 +399,6 @@ function App() {
         friends={friends}
         huddles={huddleList}
         events={activityFeed}
-        board={board}
         nearbyCount={nearbyCount}
         formingCount={formingCount}
         activeHuddles={activeHuddles}

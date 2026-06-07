@@ -64,16 +64,16 @@ export function useMapboxMap({
     setMounted(true);
   }, []);
 
-  // Pulsing animation for heatmap
+  // Spreading/contracting animation for heatmap radius
   useEffect(() => {
     let animationFrameId: number;
     let startTime = Date.now();
 
     const animate = () => {
-      const elapsed = (Date.now() - startTime) % 2500;
-      const progress = elapsed / 2500;
-      const pulse = 0.4 + Math.sin(progress * Math.PI * 2) * 0.45;
-      setHeatmapPulse(pulse);
+      const elapsed = (Date.now() - startTime) % 3000;
+      const progress = elapsed / 3000;
+      const spread = 0.7 + Math.sin(progress * Math.PI * 2) * 0.3;
+      setHeatmapPulse(spread);
       animationFrameId = requestAnimationFrame(animate);
     };
 
@@ -167,11 +167,17 @@ export function useMapboxMap({
               1,
               'rgba(0, 255, 150, 1)',
             ],
-            'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 10, 15, 12, 35, 14, 65, 15, 90, 16, 120, 17, 160],
-            'heatmap-opacity': warmthEnabled ? heatmapPulse : 0,
+            'heatmap-radius': warmthEnabled
+              ? ['interpolate', ['linear'], ['zoom'], 10, 15 * heatmapPulse, 12, 35 * heatmapPulse, 14, 65 * heatmapPulse, 15, 90 * heatmapPulse, 16, 120 * heatmapPulse, 17, 160 * heatmapPulse]
+              : ['interpolate', ['linear'], ['zoom'], 10, 15, 12, 35, 14, 65, 15, 90, 16, 120, 17, 160],
+            'heatmap-opacity': warmthEnabled ? 0.85 : 0,
           },
         });
       } else {
+        const radiusInterpolation = warmthEnabled
+          ? ['interpolate', ['linear'], ['zoom'], 10, 15 * heatmapPulse, 12, 35 * heatmapPulse, 14, 65 * heatmapPulse, 15, 90 * heatmapPulse, 16, 120 * heatmapPulse, 17, 160 * heatmapPulse]
+          : ['interpolate', ['linear'], ['zoom'], 10, 15, 12, 35, 14, 65, 15, 90, 16, 120, 17, 160];
+        map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-radius', radiusInterpolation);
         map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-opacity', warmthEnabled ? 0.85 : 0);
       }
     };

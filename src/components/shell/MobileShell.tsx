@@ -7,13 +7,12 @@ import { BottomSheet, type SheetState } from '@/components/panels/BottomSheet';
 import { MapPanel } from '@/components/lens/MapPanel';
 import { ActivityPanel } from '@/components/lens/ActivityPanel';
 import { FriendsPanel } from '@/components/lens/FriendsPanel';
-import { RankingsPanel } from '@/components/lens/RankingsPanel';
 import { DetailPanel } from '@/components/DetailPanel';
 import { Avatar } from '@/components/Avatar';
 import type { Lens } from '@/lib/nav-tabs';
 import type { LayerKey, FilterKey } from '@/lib/places-data';
 import type { MapAvatar, HeatPoint, Selection } from '@/components/map/markers';
-import type { FriendVM, HuddleVM, EventVM, ScoreVM, MeVM } from '@/lib/view';
+import type { FriendVM, HuddleVM, EventVM, MeVM } from '@/lib/view';
 
 export function MobileShell({
   lens,
@@ -37,7 +36,6 @@ export function MobileShell({
   friends,
   huddles,
   events,
-  board,
   nearbyCount,
   formingCount,
   activeHuddles,
@@ -64,7 +62,6 @@ export function MobileShell({
   friends: FriendVM[];
   huddles: HuddleVM[];
   events: EventVM[];
-  board: ScoreVM[];
   nearbyCount: number;
   formingCount: number;
   activeHuddles: number;
@@ -92,10 +89,8 @@ export function MobileShell({
     <MapPanel nearestFriend={nearestFriend} huddles={huddles} onSelect={onSelect} onPing={onPing} bare />
   ) : lens === 'activity' ? (
     <ActivityPanel events={events} activeHuddles={activeHuddles} friendsOut={friendsOut} bare />
-  ) : lens === 'friends' ? (
-    <FriendsPanel friends={friends} onSelect={onSelect} onPing={onPing} bare />
   ) : (
-    <RankingsPanel board={board} bare />
+    <FriendsPanel friends={friends} onSelect={onSelect} onPing={onPing} bare />
   );
 
   return (
