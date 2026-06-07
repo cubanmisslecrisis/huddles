@@ -14,66 +14,68 @@ export function PlacesPanel({
 }) {
   const [isOpen, setIsOpen] = useState(true);
 
-  if (!isOpen && places.length === 0) {
-    return null;
-  }
-
   return (
-    <div className="absolute right-6 top-6 z-40 max-h-[70vh] w-80 bg-white rounded-lg shadow-lg overflow-hidden flex flex-col">
-      <div className="flex items-center justify-between p-4 border-b border-gray-200">
-        <h3 className="font-semibold text-gray-800">
-          {places.length > 0 ? `${places.length} Places Found` : 'Search for places'}
+    <div className="absolute right-6 top-6 z-50 w-96 bg-white rounded-xl shadow-xl border border-gray-200 flex flex-col max-h-[70vh] pointer-events-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-gradient-to-r from-orange-50 to-white rounded-t-xl">
+        <h3 className="font-bold text-gray-800">
+          {places.length > 0 ? `${places.length} Places Found` : 'Nearby Places'}
         </h3>
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="text-gray-500 hover:text-gray-700 text-xl"
+          className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+          title={isOpen ? 'Collapse' : 'Expand'}
         >
-          {isOpen ? '⌄' : '^'}
+          {isOpen ? '−' : '+'}
         </button>
       </div>
 
+      {/* Content */}
       {isOpen && (
         <div className="flex-1 overflow-y-auto">
           {isLoading && (
-            <div className="p-4 text-center text-gray-500">
-              <div className="inline-block animate-spin">⏳</div>
-              <p className="mt-2 text-sm">Searching...</p>
+            <div className="p-8 text-center">
+              <div className="inline-block text-3xl animate-spin">🔍</div>
+              <p className="mt-2 text-sm font-medium text-gray-600">Searching nearby...</p>
             </div>
           )}
 
           {places.length === 0 && !isLoading && (
-            <div className="p-4 text-center text-gray-500 text-sm">
-              Click a button below the map to search for restaurants, cafes, or other places.
+            <div className="p-6 text-center text-gray-500">
+              <p className="text-sm">👇 Click a button below the map to search</p>
+              <p className="text-xs mt-2">Try "Restaurants", "Cafes", or "Food & Drink"</p>
             </div>
           )}
 
-          <div className="divide-y divide-gray-200">
-            {places.map((place) => (
-              <button
-                key={place.placeId}
-                onClick={() => onSelectPlace(selectedPlace?.placeId === place.placeId ? null : place)}
-                className={`w-full p-3 text-left transition-colors hover:bg-gray-50 ${
-                  selectedPlace?.placeId === place.placeId ? 'bg-orange-50 border-l-4 border-orange-500' : ''
-                }`}
-              >
-                <div className="font-medium text-gray-800 text-sm truncate">{place.name}</div>
-                <div className="text-xs text-gray-500 mt-1 truncate">{place.address}</div>
-                {(place.rating || place.userRatings) && (
-                  <div className="text-xs text-gray-600 mt-2 flex items-center gap-2">
-                    {place.rating && (
-                      <>
-                        <span className="text-yellow-500">★</span>
-                        <span>
-                          {place.rating.toFixed(1)}
-                          {place.userRatings && ` (${place.userRatings})`}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
+          {places.length > 0 && (
+            <div className="divide-y divide-gray-100">
+              {places.map((place) => (
+                <button
+                  key={place.placeId}
+                  onClick={() => onSelectPlace(selectedPlace?.placeId === place.placeId ? null : place)}
+                  className={`w-full px-4 py-3 text-left transition-all hover:bg-orange-50 ${
+                    selectedPlace?.placeId === place.placeId
+                      ? 'bg-orange-100 border-l-4 border-orange-500'
+                      : 'hover:border-l-4 hover:border-orange-200'
+                  }`}
+                >
+                  <div className="font-semibold text-gray-800 text-sm">{place.name}</div>
+                  <div className="text-xs text-gray-500 mt-1">{place.address}</div>
+                  {(place.rating || place.userRatings) && (
+                    <div className="text-xs text-gray-600 mt-2 flex items-center gap-1">
+                      <span className="text-yellow-500 text-lg">★</span>
+                      <span className="font-medium">
+                        {place.rating?.toFixed(1) || 'N/A'}
+                      </span>
+                      {place.userRatings && (
+                        <span className="text-gray-400">({place.userRatings})</span>
+                      )}
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
