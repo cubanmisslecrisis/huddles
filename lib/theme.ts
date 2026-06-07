@@ -93,24 +93,3 @@ export function activityBadgeColor(color: ActivityItem["badgeColor"]): string {
   return brandColors[color]
 }
 
-/**
- * Mapbox heatmap gradient stops (rgba). Mapbox paint props cannot read CSS vars;
- * values are tuned to match brand warmth/orange in globals.css.
- */
-export const mapWarmthHeatmapGradient = [
-  "interpolate",
-  ["linear"],
-  ["heatmap-density"],
-  0,
-  "rgba(250, 137, 39, 0)",
-  0.15,
-  "rgba(255, 210, 160, 0.45)",
-  0.35,
-  "rgba(255, 170, 90, 0.65)",
-  0.55,
-  "rgba(250, 137, 39, 0.8)",
-  0.75,
-  "rgba(235, 95, 25, 0.9)",
-  1,
-  "rgba(200, 55, 10, 1)",
-] as const

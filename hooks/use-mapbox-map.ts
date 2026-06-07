@@ -7,7 +7,8 @@ import { MAP_CENTER, MAP_ZOOM } from "@/lib/huddles-data"
 import type { MapMarkerDef } from "@/hooks/use-map-marker-defs"
 import type { MapProject } from "@/lib/map-projection"
 import type { MapControls } from "@/lib/map-controls"
-import { ensureWarmthLayer } from "@/lib/mapbox/warmth-layer"
+import { useHeatmapPulse } from "@/hooks/use-heatmap-pulse"
+import { ensureWarmthLayer, setWarmthLayerPulse } from "@/lib/mapbox/warmth-layer"
 import type { HeatPoint } from "@/lib/view"
 import { attachRotateGesture } from "@/lib/mapbox/rotate-gesture"
 import {
@@ -57,6 +58,9 @@ export function useMapboxMap({
   const recenteredRef = useRef(false)
   const heatRef = useRef(heat)
   heatRef.current = heat
+  const heatmapPulse = useHeatmapPulse(warmthEnabled)
+  const pulseRef = useRef(heatmapPulse)
+  pulseRef.current = heatmapPulse
 
   const [tokenMissing, setTokenMissing] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -143,14 +147,21 @@ export function useMapboxMap({
     const map = mapRef.current
     if (!map || !mapReady) return
 
-    const applyWarmth = () => ensureWarmthLayer(map, warmthEnabled, heatRef.current)
+    const applyWarmth = () =>
+      ensureWarmthLayer(map, warmthEnabled, heatRef.current, pulseRef.current)
 
     if (map.isStyleLoaded()) {
       applyWarmth()
     } else {
-      map.once("load", applyWarmth)
+      map.once("idle", applyWarmth)
     }
   }, [mapReady, warmthEnabled, heat])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    setWarmthLayerPulse(map, warmthEnabled, heatmapPulse)
+  }, [mapReady, warmthEnabled, heatmapPulse])
 
   useEffect(() => {
     const map = mapRef.current
