@@ -8,13 +8,17 @@
 > (candidate→active→cooling→ended), constants, dwell/cooling, and freshness rules
 > are otherwise unchanged — just swap "in the same zone" for "within the radius."
 >
-> As implemented in `runHuddleEngine`: each tick the fresh located users in a room are
-> grouped by **deterministic union-find over the "within `PROXIMITY_RADIUS_METERS`" graph**
-> (transitive — A–B and B–C close ⇒ one cluster), and each cluster is matched to an existing
-> live huddle by **Jaccard membership overlap** (`OVERLAP_THRESHOLD`) so a huddle keeps its
-> identity as members come and go. There is **no `zone` table**: warmth and its decay now live
-> on the **huddle** (`huddle.warmth`, `decayHuddles`), recomputed at the centroid each tick.
-> Below, read "zone" as "the huddle's cluster".
+> As implemented in `runHuddleEngine`: **the 1s scheduled `huddleTick` is the single clock** —
+> it (and only it) advances every room's state machine; `heartbeatLocation` / `leaveRoom` /
+> disconnect just write `presence`. Each tick the fresh located users in a room are grouped by
+> **deterministic union-find** over a proximity graph with **hysteresis**: a brand-new link
+> needs `≤ PROXIMITY_RADIUS_METERS` (join), but a pair already co-membered in the same live
+> huddle stays linked out to `STAY_RADIUS_METERS` (so GPS jitter at the edge doesn't flap the
+> cluster). Clustering is transitive (A–B and B–C close ⇒ one cluster). Each cluster is matched
+> to an existing live huddle by **Jaccard membership overlap** (`OVERLAP_THRESHOLD`) so a huddle
+> keeps its identity as members come and go. There is **no `zone` table**: warmth and its decay
+> now live on the **huddle** (`huddle.warmth`, `decayHuddles`), recomputed at the centroid each
+> tick. Below, read "zone" as "the huddle's cluster".
 
 ## Purpose
 
@@ -24,7 +28,7 @@ The core rule:
 
 > Clients only report where users are. The server decides whether a huddle exists.
 
-The server is SpacetimeDB reducers operating over shared `presence`, `huddle`, `zone`, and `score` tables. See `TECHNICAL_PLAN.md` for the concrete table/reducer shapes and `PROJECT.md` for product framing.
+The server is SpacetimeDB reducers operating over shared `presence`, `huddle`, `huddle_member`, and `score` tables (there is **no `zone` table**). See `TECHNICAL_PLAN.md` for the concrete table/reducer shapes and `PROJECT.md` for product framing.
 
 ---
 
@@ -95,6 +99,14 @@ For production:
 ```text
 within 50–150 meters = close enough
 ```
+
+**Jitter robustness (as implemented).** A candidate is protected from a single noisy tick
+two ways: (1) **hysteresis** keeps already-grouped members linked out to `STAY_RADIUS_METERS`,
+and (2) a **candidate grace** of `CANDIDATE_GRACE_SECONDS` — if the cluster briefly drops below
+`MIN_USERS_FOR_HUDDLE`, the candidate is *not* ended immediately; it survives the grace window
+and its dwell timer (`candidateStartedAt`) is **not** reset. Only if the cluster stays gone past
+the grace does the candidate end. (Implementation note: the grace clock reuses the
+otherwise-unused `coolingStartedAt` column while the row is still `candidate`.)
 
 ### Active
 
@@ -175,12 +187,16 @@ Use these values for the hackathon demo:
 
 ```text
 MIN_USERS_FOR_HUDDLE     = 2
+PROXIMITY_RADIUS_METERS  = 100   # JOIN radius (production 50–150 m)
+STAY_RADIUS_METERS       = 130   # hysteresis: keep an already-grouped pair linked until they part past this
 DWELL_THRESHOLD_SECONDS  = 10
 WARMTH_TICK_SECONDS      = 5
 COOLING_THRESHOLD_SECONDS= 10
+CANDIDATE_GRACE_SECONDS  = 5     # a forming (candidate) huddle survives this long without its cluster
 PRESENCE_STALE_SECONDS   = 15
 WARMTH_PER_TICK          = 5
 POINTS_PER_TICK          = 5
+OVERLAP_THRESHOLD        = 0.34  # Jaccard cluster↔huddle match ("share ≥1 of 2")
 ```
 
 These values are intentionally short so judges can see the full loop during a short demo. Keep them in one module-level constants block so demo↔production tuning is a single edit.
@@ -364,6 +380,7 @@ for each room:
         emit "Huddle reactivated" event
 
       if huddle.status == candidate:
+        huddle.cooling_started_at = null      # cluster present ⇒ cancel any grace (dwell NOT reset)
         if now - huddle.candidate_started_at >= DWELL_THRESHOLD_SECONDS:
           huddle.status = active
           huddle.activated_at = now
@@ -387,9 +404,13 @@ for each room:
           emit "Huddle cooling" event
 
         else if huddle.status == candidate:
-          huddle.status = ended
-          huddle.ended_at = now
-          emit "Candidate huddle cancelled" event
+          # candidate grace — don't end on a single jittery tick (dwell is NOT reset)
+          if huddle.cooling_started_at == null:
+            huddle.cooling_started_at = now
+          else if now - huddle.cooling_started_at >= CANDIDATE_GRACE_SECONDS:
+            huddle.status = ended
+            huddle.ended_at = now
+            emit "Candidate huddle cancelled" event
 
         else if huddle.status == cooling:
           if now - huddle.cooling_started_at >= COOLING_THRESHOLD_SECONDS:
@@ -428,12 +449,15 @@ This is the key to making SpacetimeDB meaningful: it is the authoritative shared
 These tie the rules above to this repo's actual stack (TypeScript module). See
 `TECHNICAL_PLAN.md` and the root `CLAUDE.md` for full conventions.
 
-- **Time-driven logic uses scheduled reducers, not client timers.** SpacetimeDB
-  TypeScript supports scheduled tables: a `huddle_tick` scheduled table drives
-  `update_huddles` on a repeating interval (e.g. every 1–2s). `expire_stale_presence`
-  and `decay_zones` are likewise scheduled. The movement reducers may *also* call the
-  state-machine logic immediately so transitions feel instant, but correctness does not
-  depend on a client calling `tick()`.
+- **Time-driven logic uses scheduled reducers, not client timers — one clock.** The
+  `huddle_tick_timer` scheduled table drives `huddleTick` every 1s and is the **single
+  caller** of `runHuddleEngine`; it advances the state machine for every room.
+  `expireStalePresence` (5s) and `decayHuddles` (10s) are likewise scheduled.
+  Movement reducers (`heartbeatLocation` / `leaveRoom`) and disconnect do **not** run the
+  engine inline — they only write `presence`; the next tick (≤1s later) reacts. This is a
+  deliberate change from the earlier "also call inline for instant feedback" approach:
+  nothing the engine produces is sub-second-critical (dwell is 10s), and the inline calls
+  multiplied the O(n²) work and the huddle-row churn pushed to every client.
 - **All time comes from `ctx.timestamp`** (deterministic per reducer call). Never use
   wall-clock or client-supplied timestamps for freshness/dwell/cooling math.
 - **Identity is `ctx.sender`.** Users and members are keyed by Identity; never trust a

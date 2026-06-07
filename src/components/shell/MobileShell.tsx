@@ -11,7 +11,7 @@ import { DetailPanel } from '@/components/DetailPanel';
 import { Avatar } from '@/components/Avatar';
 import type { Lens } from '@/lib/nav-tabs';
 import type { LayerKey, FilterKey } from '@/lib/places-data';
-import type { MapAvatar, HeatPoint, HuddleHeatPoint, Selection } from '@/components/map/markers';
+import type { MapAvatar, HeatPoint, Selection } from '@/components/map/markers';
 import type { FriendVM, HuddleVM, EventVM, ScoreVM, MeVM } from '@/lib/view';
 
 export function MobileShell({
@@ -32,7 +32,6 @@ export function MobileShell({
   me,
   avatars,
   heat,
-  huddleHeat,
   myLoc,
   friends,
   huddles,
@@ -60,7 +59,6 @@ export function MobileShell({
   me: MeVM;
   avatars: MapAvatar[];
   heat: HeatPoint[];
-  huddleHeat: HuddleHeatPoint[];
   myLoc: { lat: number; lng: number } | null;
   friends: FriendVM[];
   huddles: HuddleVM[];
@@ -104,7 +102,6 @@ export function MobileShell({
       <MapCanvas
         avatars={avatars}
         heat={heat}
-        huddleHeat={huddleHeat}
         myLoc={myLoc}
         selection={selection}
         onSelect={onSelect}

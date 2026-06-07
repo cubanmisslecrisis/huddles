@@ -3,8 +3,10 @@
 > ⚠️ **MODEL UPDATE — live GPS.** The implemented schema differs from the zone-based draft
 > below. **Authoritative current model:** no `zone` table; `presence` holds `lat`/`lng`/
 > `hasFix`; movement is `heartbeatLocation(lat,lng)` (not `moveToZone`); `huddle` holds
-> `lat`/`lng`/`warmth`/`memberCount`; proximity is haversine `≤ PROXIMITY_RADIUS_METERS`.
-> See "Data Model (live GPS)" immediately below; treat the older zone sections as historical.
+> `lat`/`lng`/`warmth`/`memberCount`; proximity is haversine with hysteresis (join
+> `≤ PROXIMITY_RADIUS_METERS`, stay `≤ STAY_RADIUS_METERS`); the engine runs only on the 1s
+> `huddleTick` (single clock). See "Data Model (live GPS)" immediately below; treat the older
+> zone sections as historical.
 
 ## Data Model (live GPS) — AUTHORITATIVE
 
@@ -18,6 +20,8 @@ Tables in `spacetimedb/src/index.ts` (all `public`, snake_case names, identity-k
 - **huddle** — `id` pk autoInc, `room_id` (index), `lat`/`lng` (cluster centroid), `status`
   (candidate|active|cooling|ended), `candidate_started_at`, `activated_at?`,
   `cooling_started_at?`, `ended_at?`, `warmth` f64, `member_count` u32, `last_warmth_tick_at`.
+  Note: `cooling_started_at` doubles as the **candidate-grace clock** — set while a row is still
+  `candidate` to time its grace window before ending (see HUDDLE_LOGIC.md).
 - **huddle_member** — `id` pk autoInc, `huddle_id` (index), `identity`, `joined_at`,
   `last_seen_in_huddle`, `left_at?`.
 - **event** — `id` pk autoInc, `room_id` (index), `type`, `message`, `huddle_id?`,
@@ -31,15 +35,19 @@ Tables in `spacetimedb/src/index.ts` (all `public`, snake_case names, identity-k
 - `joinRoom(name, roomCode)` — create/join room, upsert user, init score, init presence
   (no fix yet), emit `user_joined`.
 - `heartbeatLocation(lat, lng)` — **primary movement input**; update the caller's fix +
-  `last_seen`, then `runHuddleEngine(roomId)`. Client calls it from
-  `navigator.geolocation.watchPosition` (throttled).
-- `leaveRoom()` — mark offline, emit `user_left`, re-run engine.
+  `last_seen` and bump `heat_cell`. Does **not** run the engine inline — the 1s `huddleTick`
+  is the single clock. Client calls it from `navigator.geolocation.watchPosition` (throttled).
+- `leaveRoom()` — mark offline, emit `user_left`. (No inline engine run; the next tick detaches them.)
 - `pingNearby()` — `freshUsersNear(roomId, lat, lng)` within the radius → `ping` event.
 
-### Proximity primitive
+### Proximity primitive + engine
 - `freshUsersNear(ctx, roomId, lat, lng)` — active users with a fresh fix whose haversine
-  `distanceMeters(...)` to (lat,lng) is `≤ PROXIMITY_RADIUS_METERS`. Reused by `pingNearby`
-  and the Part 2 engine, which **clusters** fresh users into huddles.
+  `distanceMeters(...)` to (lat,lng) is `≤ PROXIMITY_RADIUS_METERS`. Used by `pingNearby`.
+- `runHuddleEngine(ctx, roomId)` — **tick-only** state machine: clusters fresh users via
+  union-find with **hysteresis** (new link `≤ PROXIMITY_RADIUS_METERS`; keep an already-grouped
+  pair to `STAY_RADIUS_METERS`), matches clusters to live huddles by Jaccard `OVERLAP_THRESHOLD`,
+  and drives candidate→active→cooling→ended (+ warmth/score). Each live huddle's member set is
+  computed once per run (no per-cluster rescans).
 
 ## Proof-of-Hangout / Social-Map roadmap (Phase 2 — planned)
 
@@ -324,7 +332,7 @@ Runs the candidate→active→cooling→ended machine (see `HUDDLE_LOGIC.md` pse
 - end after cooling threshold; emit recap; finalize scores
 - emit events for visible transitions
 
-Invoked from: the scheduled tick (primary), and optionally inline from `moveToZone` for instant feedback.
+Invoked from: the scheduled 1s `huddleTick` **only** (the single clock). Movement reducers and disconnect do not call it inline — they write `presence`, and the next tick reacts.
 
 ### expireStalePresence()
 
@@ -357,8 +365,9 @@ decay_tick    → decayZones            every ~30s   (optional for first demo)
 
 Schedule them from the `init` lifecycle reducer (repeating interval). This makes the
 world advance on its own even when nobody is moving, and keeps all timing deterministic
-via `ctx.timestamp`. `moveToZone` may additionally call `updateHuddles` synchronously so
-forming/cooling feels instant, but correctness never depends on a client tick.
+via `ctx.timestamp`. **The 1s `huddleTick` is the single caller of `runHuddleEngine`** —
+movement reducers (`heartbeatLocation`/`leaveRoom`) and disconnect only write `presence`, so
+the engine's O(n²) work runs once per second per room rather than on every heartbeat.
 
 ---
 
@@ -512,8 +521,9 @@ All huddle logic lives in SpacetimeDB reducers. This is what makes the project a
 
 ## Risks & Mitigations
 
-- **Timing / periodic logic** — solved by scheduled reducers (above). Movement reducers
-  also call `updateHuddles` for instant feedback. Do not push timing onto the client.
+- **Timing / periodic logic** — solved by scheduled reducers (above). The 1s `huddleTick`
+  is the single engine clock; movement reducers only write `presence`. Do not push timing
+  onto the client.
 - **Duplicate huddles** — before creating a candidate, check for an existing non-ended
   huddle for `(room_id, zone_id)` via the index.
 - **Stale users** — a user who closes the tab triggers `clientDisconnected` (mark offline)

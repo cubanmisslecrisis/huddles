@@ -14,14 +14,14 @@
 
 When the docs and this file disagree on *mechanics*, the docs win; this section governs *how to write the code*.
 
-## Current state vs target
+## Current state
 
-The committed client (`src/App.tsx`, `src/HuddleMap.tsx`) and module (`spacetimedb/src/index.ts`) are a **starter that does not yet match the spec**:
+The committed module and client now implement the **live-GPS model** (this section used to warn they were unmatched starter code — that's no longer true):
 
-- `spacetimedb/src/index.ts` is still the SpacetimeDB **chat quickstart** (`user` + `message` tables) — this is what's published to `huddles-5eq44`.
-- The client / generated bindings (`src/module_bindings/`) are a **manual** "penguin huddle" app where the *user* taps "Start a huddle" — the opposite of the spec's emergent, server-decided model.
+- `spacetimedb/src/index.ts` is the full proximity + huddle engine: `user` / `room` / `presence` (lat/lng/hasFix) / `huddle` / `huddle_member` / `event` / `score` / `heat_cell`, plus the scheduled `huddleTick` (1s — the **single** engine clock) / `expireStalePresence` (5s) / `decayHuddles` (10s). Clients stream location via `heartbeatLocation`; the server clusters by proximity (union-find with hysteresis) and runs candidate→active→cooling→ended.
+- The client (`src/`) streams live GPS (`navigator.geolocation.watchPosition` → ~3s heartbeat), subscribes to the public tables, and renders solo/merged avatars + the Mapbox heatmap. There is **no** tap-to-huddle button — huddles are emergent and server-decided.
 
-So the client and the live module already diverge today, and both diverge from the target in the docs. Treat the docs as the destination; expect to rewrite both the module and the client to reach the zone-based proximity state machine. Don't assume existing tables/reducers match the spec.
+Phase 2 ("Proof of Hangout") builds additively on this engine; see `PROGRESS.md` for what's done vs remaining.
 
 ## Code Conventions
 
@@ -29,7 +29,7 @@ So the client and the live module already diverge today, and both diverge from t
 - **Table `name` is snake_case** (`huddle_member`); the `ctx.db` accessor is the camelCase form (`ctx.db.huddleMember`). Make tables `public: true` only when the client must subscribe.
 - **Auth is always `ctx.sender`.** Key users/presence/members by Identity. Never accept a `user_id`/identity as a reducer argument and trust it.
 - **Determinism.** Time is `ctx.timestamp`; randomness is `ctx.random`. No wall-clock, `Date.now()`, `Math.random()`, network, or filesystem in reducers.
-- **Time-based logic uses scheduled reducers**, not client-driven `tick()` calls. Schedule `updateHuddles` / `expireStalePresence` / `decayZones` from `init` via scheduled tables. Movement reducers may also call the state machine inline for instant feedback, but correctness must not depend on a client tick.
+- **Time-based logic uses scheduled reducers**, not client-driven `tick()` calls. Schedule `huddleTick` / `expireStalePresence` / `decayHuddles` from `init` via scheduled tables. **One clock:** `huddleTick` (1s) is the *single* caller of `runHuddleEngine`; movement reducers (`heartbeatLocation`/`leaveRoom`) and disconnect only write `presence` and let the next tick react — they do **not** run the engine inline.
 - **Index hot lookups.** "Live huddle for a zone" and "fresh users in a zone" should hit a btree index (e.g. multi-column `(room_id, zone_id)`), not a full scan.
 - **Reducers don't return data.** Clients read via subscriptions (`useTable`) and row callbacks. The client reports movement and renders state — it never creates or mutates huddles.
 - **Regenerate bindings after any schema change:** `npm run spacetime:generate` (writes `src/module_bindings/` — never hand-edit those files).

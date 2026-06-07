@@ -41,14 +41,17 @@ banners in `PROJECT.md` / `HUDDLE_LOGIC.md` / `TECHNICAL_PLAN.md`).
   `leaveRoom`, `pingNearby`, `onConnect`/`onDisconnect`, plus helpers `distanceMeters`
   (haversine), `freshUsersNear` (radius), `emitEvent`. CLI smoke test passed:
   join → heartbeat (sets lat/lng + has_fix) → ping → feed events all correct.
-- **Part 2 huddle engine (verified on maincloud):** `runHuddleEngine(roomId)` clusters
-  fresh located users by distance (deterministic union-find within
-  `PROXIMITY_RADIUS_METERS`), matches each cluster to a live huddle by Jaccard membership
-  overlap, and drives `candidate → active (after dwell) → cooling → ended`, recomputing the
-  huddle centroid each tick, warming active huddles + scoring members, and decaying warmth.
-  `huddleTick` (per-room), `expireStalePresence` (stale → re-run), `decayHuddles` implemented.
-  CLI test: two co-located users → huddle activates, `warmth`/`warmth_points`/`huddles_joined`
-  tick up, then cools/ends when they go stale.
+- **Part 2 huddle engine:** `runHuddleEngine(roomId)` clusters fresh located users by
+  distance (deterministic union-find) with **hysteresis** (join `≤ PROXIMITY_RADIUS_METERS`,
+  keep an already-grouped pair to `STAY_RADIUS_METERS`), matches each cluster to a live huddle
+  by Jaccard membership overlap (member sets computed once per run), and drives
+  `candidate → active (after dwell) → cooling → ended` with a **candidate grace** so a one-tick
+  GPS bounce doesn't reset dwell — recomputing the centroid each tick, warming + scoring active
+  huddles, and decaying warmth. **Single clock:** the 1s `huddleTick` is the only caller of the
+  engine; `heartbeatLocation`/`leaveRoom`/disconnect just write `presence`. `expireStalePresence`
+  (5s, active→stale) and `decayHuddles` (10s) are scheduled. The base loop was verified on
+  maincloud (two co-located users → activate → warm/score → cool/end); the single-clock +
+  hysteresis + grace refinement type-checks and is **pending re-publish + live re-verify**.
 - **Spec docs + conventions** — `PROJECT`/`HUDDLE_LOGIC`/`TECHNICAL_PLAN`/`WORK_SPLIT`/
   `CLAUDE`/`AGENTS` carry the live-GPS MODEL UPDATE; `TECHNICAL_PLAN` has an authoritative
   "Data Model (live GPS)" section.
@@ -62,12 +65,14 @@ banners in `PROJECT.md` / `HUDDLE_LOGIC.md` / `TECHNICAL_PLAN.md`).
 ## To do ⬜
 
 ### Backend — Part 2 huddle engine (`spacetimedb/src/index.ts`) ✅ DONE
-- ✅ `runHuddleEngine(roomId)` — clusters fresh users (deterministic union-find within
-  `PROXIMITY_RADIUS_METERS`), matches each cluster to a live huddle by Jaccard membership
-  overlap, and runs candidate → active → cooling → ended; sets huddle centroid lat/lng,
+- ✅ `runHuddleEngine(roomId)` — clusters fresh users (deterministic union-find) with
+  hysteresis (join `≤ PROXIMITY_RADIUS_METERS`, stay `≤ STAY_RADIUS_METERS`), matches each
+  cluster to a live huddle by Jaccard overlap (member sets memoized per run), and runs
+  candidate → active → cooling → ended (with candidate grace); sets huddle centroid lat/lng,
   warms + scores active huddles.
-- ✅ `huddleTick` (drives engine per room), `expireStalePresence` (stale → re-run engine →
-  cool), `decayHuddles` (warmth decay). Verified live on maincloud.
+- ✅ `huddleTick` (1s — the single engine clock), `expireStalePresence` (5s, flips
+  active→stale; no engine re-run), `decayHuddles` (10s, warmth decay). Base loop verified live
+  on maincloud; single-clock/hysteresis/grace refinement pending re-verify.
 
 ### Frontend — client rebuild (`src/App.tsx`) ✅ DONE
 - ✅ Join screen → `joinRoom` (name + room code, default `demo`), re-themed.
@@ -121,11 +126,10 @@ path alias added. Structure: `src/components/{map,shell,panels,lens,flows,ui}` +
 - ✅ **Heatmap layer** from `heat_cell` (warm ramp on the light basemap, weight-driven,
   refreshed each heartbeat; large radius so cells **fuse** into continuous blobs rather than
   isolated circles). Decay unchanged server-side (`×0.6`/10 s, cap 16).
-- ✅ **Pulsing "huddle of heat"** — the **heatmap *under* a huddle pulsates** (not the
-  avatar): a second additive `huddle-heat-layer` (`useMapboxMap`) sourced from each merged
-  huddle's centroid, its per-point weight throbbed via `requestAnimationFrame`
-  (`weight = warmth·k`, `k≈0.5..1.2`, ~2.8 s) so amplitude ∝ `warmth` and it stacks onto any
-  existing heat. Bigger magnitude + radius for visibility.
+- ✅ **The heatmap itself pulsates** (not the avatar) — the real `activity-heat` (`heat_cell`)
+  layer's opacity throbs via an rAF `heatmapPulse` (`useMapboxMap`), so the pulse comes from
+  the heatmap. (An earlier separate warmth-driven `huddle-heat` overlay was removed as
+  redundant once the heatmap itself pulses.)
 - ✅ **Avatar markers are static** — non-ended `huddle` w/ 2+ active members → one merged
   cluster bubble (count, fixed warm color, no pulse); solo people are `Avatar` discs (hashed
   color + initial — no photos). Verified live in-browser (real "Huddle of 2" + 440 m friend

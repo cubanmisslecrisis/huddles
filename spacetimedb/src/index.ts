@@ -21,10 +21,12 @@ import { ScheduleAt } from 'spacetimedb';
 // CONSTANTS  (hackathon demo values — see HUDDLE_LOGIC.md "Constants")
 // ═════════════════════════════════════════════════════════════════════════════
 const MIN_USERS_FOR_HUDDLE = 2;
-const PROXIMITY_RADIUS_METERS = 100; // two users this close count as "together"
+const PROXIMITY_RADIUS_METERS = 100; // JOIN radius: two users this close start counting as "together"
+const STAY_RADIUS_METERS = 130; // hysteresis: an already-grouped pair stays linked until they part past this
 const DWELL_THRESHOLD_SECONDS = 10;
 const WARMTH_TICK_SECONDS = 5;
 const COOLING_THRESHOLD_SECONDS = 10;
+const CANDIDATE_GRACE_SECONDS = 5; // a forming (candidate) huddle survives this long without its cluster
 const PRESENCE_STALE_SECONDS = 15;
 const WARMTH_PER_TICK = 5;
 const POINTS_PER_TICK = 5;
@@ -386,8 +388,8 @@ export const heartbeatLocation = spacetimedb.reducer(
     // Phase-2 heatmap: bump this grid cell's activity weight.
     bumpHeat(ctx, p.roomId, lat, lng);
 
-    // Seam to Part 2: re-cluster this room now that someone moved.
-    runHuddleEngine(ctx, p.roomId);
+    // No inline engine call — the 1s huddleTick is the single clock that advances every
+    // room's huddle state. Heartbeat only writes presence + heat (see HUDDLE_LOGIC.md).
   }
 );
 
@@ -399,8 +401,7 @@ export const leaveRoom = spacetimedb.reducer((ctx) => {
 
   const who = ctx.db.user.identity.find(ctx.sender)?.name ?? 'Someone';
   emitEvent(ctx, p.roomId, 'user_left', `${who} left`);
-
-  runHuddleEngine(ctx, p.roomId);
+  // The next huddleTick detaches them from any huddle (single-clock model).
 });
 
 // Maggie's feature: ping the fresh users near the caller (one feed event for MVP).
@@ -431,6 +432,7 @@ const OVERLAP_THRESHOLD = 0.34;
 const DWELL_MICROS = BigInt(DWELL_THRESHOLD_SECONDS) * 1_000_000n;
 const WARMTH_MICROS = BigInt(WARMTH_TICK_SECONDS) * 1_000_000n;
 const COOLING_MICROS = BigInt(COOLING_THRESHOLD_SECONDS) * 1_000_000n;
+const CANDIDATE_GRACE_MICROS = BigInt(CANDIDATE_GRACE_SECONDS) * 1_000_000n;
 
 // Stable identity ordering. Hex is fixed-length, so lexicographic == numeric order.
 // Load-bearing for determinism: SpacetimeDB does not guarantee iteration order, so
@@ -460,8 +462,11 @@ function freshUsersInRoom(ctx: any, roomId: bigint): any[] {
 // is identity-sorted, ties attach larger root under smaller, output sorted.
 // NOTE: transitive chaining is intentional — A–B and B–C within radius ⇒ one
 // cluster even if A–C is farther. Reads as "one group standing near each other".
-function clusterFreshUsers(fresh: any[]): any[][] {
+// Hysteresis: a pair already co-membered in the SAME live huddle (memberHuddleOf)
+// stays linked out to STAY_RADIUS_METERS; a brand-new link still needs PROXIMITY_RADIUS.
+function clusterFreshUsers(fresh: any[], memberHuddleOf: Map<string, bigint>): any[][] {
   const n = fresh.length;
+  const hexes = fresh.map((p: any) => idHex(p.identity));
   const parent = Array.from({ length: n }, (_, i) => i);
   const find = (x: number): number => {
     while (parent[x] !== x) {
@@ -481,7 +486,9 @@ function clusterFreshUsers(fresh: any[]): any[][] {
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
       const d = distanceMeters(fresh[i].lat, fresh[i].lng, fresh[j].lat, fresh[j].lng);
-      if (d <= PROXIMITY_RADIUS_METERS) union(i, j);
+      const hi = memberHuddleOf.get(hexes[i]);
+      const sameHuddle = hi != null && hi === memberHuddleOf.get(hexes[j]);
+      if (d <= PROXIMITY_RADIUS_METERS || (sameHuddle && d <= STAY_RADIUS_METERS)) union(i, j);
     }
   }
 
@@ -520,18 +527,29 @@ function memberSet(ctx: any, huddleId: bigint): Set<string> {
 const nameOf = (ctx: any, identity: any): string =>
   ctx.db.user.identity.find(identity)?.name ?? 'Someone';
 
-// The huddle state machine, run per room. Plain helper so BOTH the scheduled tick
-// and Part 1's heartbeatLocation can run it. Reads `presence`, mutates
+// The huddle state machine, run per room. Driven solely by the scheduled huddleTick
+// (1s) — the single clock for all transitions. Reads `presence`, mutates
 // huddle / huddle_member / score / event. Clusters fresh users by distance and
 // matches each cluster to an existing huddle by membership overlap.
 function runHuddleEngine(ctx: any, roomId: bigint): void {
   const now = nowMicros(ctx);
-  const fresh = freshUsersInRoom(ctx, roomId);
-  const clusters = clusterFreshUsers(fresh);
 
+  // Live huddles first — their current membership drives BOTH the hysteresis edges in
+  // clustering (who is already grouped) and the cluster↔huddle match below. memberSets is
+  // computed once here and reused, instead of re-scanning huddle_member per cluster×huddle.
   const liveHuddles = [...ctx.db.huddle.roomId.filter(roomId)]
     .filter((h: any) => h.status !== 'ended')
     .sort((a: any, b: any) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const memberSets = new Map<bigint, Set<string>>();
+  const memberHuddleOf = new Map<string, bigint>();
+  for (const h of liveHuddles) {
+    const set = memberSet(ctx, h.id);
+    memberSets.set(h.id, set);
+    for (const hex of set) memberHuddleOf.set(hex, h.id); // sorted-id iteration ⇒ deterministic
+  }
+
+  const fresh = freshUsersInRoom(ctx, roomId);
+  const clusters = clusterFreshUsers(fresh, memberHuddleOf);
 
   const clusterSets = clusters.map((c) => new Set(c.map((p: any) => idHex(p.identity))));
   const matched = new Set<bigint>();
@@ -543,7 +561,7 @@ function runHuddleEngine(ctx: any, roomId: bigint): void {
     let bestScore = 0;
     for (const h of liveHuddles) {
       if (matched.has(h.id)) continue;
-      const hset = memberSet(ctx, h.id);
+      const hset = memberSets.get(h.id)!;
       let inter = 0;
       for (const x of cset) if (hset.has(x)) inter++;
       const unionSize = new Set([...cset, ...hset]).size;
@@ -646,6 +664,7 @@ function updateExistingHuddle(ctx: any, h: any, cluster: any[], now: bigint): vo
       lng: c.lng,
     });
   } else if (h.status === 'candidate') {
+    next.coolingStartedAt = undefined; // cluster is present this tick → cancel any grace
     if (now - h.candidateStartedAt.microsSinceUnixEpoch >= DWELL_MICROS) {
       next.status = 'active';
       next.activatedAt = ctx.timestamp;
@@ -694,7 +713,14 @@ function declineHuddle(ctx: any, h: any, now: bigint): void {
     ctx.db.huddle.id.update({ ...h, status: 'cooling', coolingStartedAt: ctx.timestamp });
     emitEvent(ctx, h.roomId, 'huddle_cooling', 'Huddle cooling', { huddleId: h.id });
   } else if (h.status === 'candidate') {
-    endHuddle(ctx, h, 'Huddle dispersed before forming');
+    // Candidate grace: don't kill a forming huddle on a single jittery tick. Reuse
+    // coolingStartedAt (unused while 'candidate') as the grace clock; end only if the
+    // cluster stays gone past CANDIDATE_GRACE. Dwell (candidateStartedAt) is NOT reset.
+    if (h.coolingStartedAt == null) {
+      ctx.db.huddle.id.update({ ...h, coolingStartedAt: ctx.timestamp });
+    } else if (now - h.coolingStartedAt.microsSinceUnixEpoch >= CANDIDATE_GRACE_MICROS) {
+      endHuddle(ctx, h, 'Huddle dispersed before forming');
+    }
   } else if (h.status === 'cooling') {
     const startedAt = h.coolingStartedAt?.microsSinceUnixEpoch ?? now;
     if (now - startedAt >= COOLING_MICROS) endHuddle(ctx, h, recapMessage(h, now));
@@ -736,16 +762,13 @@ export const expireStalePresence = spacetimedb.reducer(
   { timer: presenceTickTimer.rowType },
   (ctx, { timer: _timer }) => {
     const now = nowMicros(ctx);
-    const touched = new Set<bigint>();
     for (const p of ctx.db.presence.iter()) {
       if (p.status === 'active' && now - p.lastSeen.microsSinceUnixEpoch > STALE_MICROS) {
         ctx.db.presence.identity.update({ ...p, status: 'stale' });
-        touched.add(p.roomId);
       }
     }
-    for (const roomId of [...touched].sort((a, b) => (a < b ? -1 : 1))) {
-      runHuddleEngine(ctx, roomId);
-    }
+    // No engine re-run here: the 1s huddleTick already drops newly-stale users from
+    // their clusters on its next pass (single-clock model).
   }
 );
 
@@ -788,7 +811,7 @@ export const onDisconnect = spacetimedb.clientDisconnected((ctx) => {
   const p = ctx.db.presence.identity.find(ctx.sender);
   if (!p) return;
   ctx.db.presence.identity.update({ ...p, status: 'offline', lastSeen: ctx.timestamp });
-  runHuddleEngine(ctx, p.roomId);
+  // The next huddleTick removes them from any huddle (single-clock model).
 });
 
 // DECAY_INTERVAL_SECONDS documents the decay cadence (encoded in DECAY_TICK_MICROS).

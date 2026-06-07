@@ -10,7 +10,7 @@ import { HuddlesLogo } from '@/components/HuddlesLogo';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import type { MapControls } from '@/components/map/MapCanvas';
-import type { MapAvatar, HeatPoint, HuddleHeatPoint, Selection } from '@/components/map/markers';
+import type { MapAvatar, HeatPoint, Selection } from '@/components/map/markers';
 import type { FriendVM, HuddleVM, EventVM, ScoreVM, MeVM } from '@/lib/view';
 import type { Lens } from '@/lib/nav-tabs';
 import type { SheetState } from '@/components/panels/BottomSheet';
@@ -193,13 +193,6 @@ function App() {
         .filter((c) => myRoomId !== undefined && c.roomId === myRoomId)
         .map((c) => ({ lat: c.lat, lng: c.lng, weight: c.weight })),
     [heatCells, myRoomId]
-  );
-
-  // Pulsing "huddle of heat": each merged huddle's centroid + warmth → the heatmap
-  // under it throbs (in useMapboxMap). The avatar markers stay static.
-  const huddleHeat = useMemo<HuddleHeatPoint[]>(
-    () => avatars.filter((a) => a.merged).map((a) => ({ lat: a.lat, lng: a.lng, warmth: a.heat })),
-    [avatars]
   );
 
   const friends = useMemo<FriendVM[]>(() => {
@@ -402,7 +395,6 @@ function App() {
         me={me}
         avatars={avatars}
         heat={heat}
-        huddleHeat={huddleHeat}
         myLoc={myLoc}
         friends={friends}
         huddles={huddleList}

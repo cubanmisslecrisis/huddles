@@ -7,8 +7,8 @@ export type SelKind = 'friend' | 'huddle' | 'pin';
 export type Selection = { kind: SelKind; id: string } | null;
 
 // A person (solo) or a merged huddle cluster, placed on the map. `heat` is the
-// huddle's warmth (0 for a solo avatar) and feeds the pulsing huddle-heat layer
-// under the markers — the markers themselves are static.
+// huddle's warmth (0 for a solo avatar); markers are static — the heatmap itself
+// pulses (see `useMapboxMap` heatmapPulse), not the avatar.
 export type MapAvatar = {
   key: string;
   lat: number;
