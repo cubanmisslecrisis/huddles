@@ -47,7 +47,6 @@ export function useMapboxMap({
   const [mapReady, setMapReady] = useState(false);
   const [tokenMissing, setTokenMissing] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [heatmapPulse, setHeatmapPulse] = useState(0);
 
   const markerKeys = markerDefs.map((d) => d.key).join('\0');
 
@@ -62,23 +61,6 @@ export function useMapboxMap({
 
   useEffect(() => {
     setMounted(true);
-  }, []);
-
-  // Spreading/contracting animation for heatmap radius
-  useEffect(() => {
-    let animationFrameId: number;
-    let startTime = Date.now();
-
-    const animate = () => {
-      const elapsed = (Date.now() - startTime) % 3000;
-      const progress = elapsed / 3000;
-      const spread = 0.7 + Math.sin(progress * Math.PI * 2) * 0.3;
-      setHeatmapPulse(spread);
-      animationFrameId = requestAnimationFrame(animate);
-    };
-
-    animationFrameId = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animationFrameId);
   }, []);
 
   // Create the map once.
@@ -133,58 +115,51 @@ export function useMapboxMap({
       } else {
         src.setData(data);
       }
+      // Natural heatmap paint — no animation, weight drives spread.
+      // Server weights range 0–16 (HEAT_PER_HEARTBEAT=2, HEAT_MAX=16, decays with factor 0.6).
+      const heatmapPaint: mapboxgl.HeatmapLayerSpecification['paint'] = {
+        // Map server weight (0–16) to heatmap point weight (0–1).
+        'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 0, 0, 4, 0.4, 8, 0.7, 16, 1],
+        // Intensity amplifies the kernel density — stronger at closer zoom.
+        'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 0.4, 13, 1.0, 15, 1.8, 17, 2.5],
+        // Natural warm color ramp: transparent → amber → orange → red, hot core white.
+        'heatmap-color': [
+          'interpolate',
+          ['linear'],
+          ['heatmap-density'],
+          0,   'rgba(0, 0, 0, 0)',
+          0.1, 'rgba(255, 220, 80, 0.35)',
+          0.3, 'rgba(255, 140, 20, 0.6)',
+          0.5, 'rgba(255, 60, 10, 0.75)',
+          0.7, 'rgba(220, 10, 40, 0.85)',
+          0.9, 'rgba(180, 0, 80, 0.92)',
+          1,   'rgba(255, 255, 255, 1)',
+        ],
+        // Larger radius = more organic spread; scales up as you zoom in.
+        'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 10, 20, 12, 45, 14, 80, 15, 110, 16, 150, 17, 200],
+        'heatmap-opacity': warmthEnabled ? 0.8 : 0,
+      };
+
       if (!map.getLayer(WARMTH_LAYER_ID)) {
         map.addLayer({
           id: WARMTH_LAYER_ID,
           type: 'heatmap',
           source: WARMTH_SOURCE_ID,
           slot: 'top',
-          paint: {
-            'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 0, 0, 0.5, 0.3, 1, 0.8, 2, 1],
-            'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 12, 1.2, 14, 2.0, 16, 3.0, 17, 4.0],
-            'heatmap-color': [
-              'interpolate',
-              ['linear'],
-              ['heatmap-density'],
-              0,
-              'rgba(255, 255, 0, 0)',
-              0.08,
-              'rgba(255, 200, 0, 0.4)',
-              0.15,
-              'rgba(255, 140, 0, 0.6)',
-              0.25,
-              'rgba(255, 80, 20, 0.75)',
-              0.35,
-              'rgba(255, 40, 100, 0.85)',
-              0.5,
-              'rgba(200, 20, 200, 0.9)',
-              0.65,
-              'rgba(100, 50, 255, 0.92)',
-              0.8,
-              'rgba(0, 150, 255, 0.95)',
-              0.9,
-              'rgba(0, 255, 200, 0.97)',
-              1,
-              'rgba(0, 255, 150, 1)',
-            ],
-            'heatmap-radius': warmthEnabled
-              ? ['interpolate', ['linear'], ['zoom'], 10, 15 * heatmapPulse, 12, 35 * heatmapPulse, 14, 65 * heatmapPulse, 15, 90 * heatmapPulse, 16, 120 * heatmapPulse, 17, 160 * heatmapPulse]
-              : ['interpolate', ['linear'], ['zoom'], 10, 15, 12, 35, 14, 65, 15, 90, 16, 120, 17, 160],
-            'heatmap-opacity': warmthEnabled ? 0.85 : 0,
-          },
+          paint: heatmapPaint,
         });
       } else {
-        const radiusInterpolation: mapboxgl.ExpressionSpecification = warmthEnabled
-          ? ['interpolate', ['linear'], ['zoom'], 10, 15 * heatmapPulse, 12, 35 * heatmapPulse, 14, 65 * heatmapPulse, 15, 90 * heatmapPulse, 16, 120 * heatmapPulse, 17, 160 * heatmapPulse]
-          : ['interpolate', ['linear'], ['zoom'], 10, 15, 12, 35, 14, 65, 15, 90, 16, 120, 17, 160];
-        map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-radius', radiusInterpolation);
-        map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-opacity', warmthEnabled ? 0.85 : 0);
+        map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-weight', heatmapPaint['heatmap-weight']);
+        map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-intensity', heatmapPaint['heatmap-intensity']);
+        map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-color', heatmapPaint['heatmap-color']);
+        map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-radius', heatmapPaint['heatmap-radius']);
+        map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-opacity', heatmapPaint['heatmap-opacity']);
       }
     };
 
     if (map.isStyleLoaded()) apply();
     else map.once('idle', apply);
-  }, [mapReady, heat, warmthEnabled, heatmapPulse]);
+  }, [mapReady, heat, warmthEnabled]);
 
   // Sync mapbox markers to the current marker defs (add new, remove gone).
   useEffect(() => {
