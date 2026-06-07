@@ -463,7 +463,8 @@ Rank users by warmth points (MVP), optionally huddles joined / total huddle time
     location; NYC fallback is free because the client heartbeats NYC-jittered coords when GPS
     is denied. Spawns `BOT_GROUP_COUNT` **group** clusters (members share the group center as
     `homeLat/Lng` and hold a fixed **formation** at `paramA` — a triangle for 3, `BOT_FORMATION_SPREAD_M`
-    from center; they do **not** circle, so the heat is the members' footprint) +
+    from the center; the center **wanders** via incommensurate sines — non-circular, never a ring —
+    so the huddle moves and its heat spreads while staying member-shaped) +
     `BOT_WANDERER_COUNT` **wanderers** (spread in an annulus, orbit solo → no heat).
   - **move** every bot (deterministic, a pure function of `ctx.timestamp`). No heat is written here.
   - **config-refresh:** if the live fleet's size/kinds don't match the spawn config, despawn so it

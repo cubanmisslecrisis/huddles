@@ -90,8 +90,9 @@ banners in `PROJECT.md` / `HUDDLE_LOGIC.md` / `TECHNICAL_PLAN.md`).
 - ✅ **Demo bots + huddle-driven heatmap** (`bot` table + scheduled `botTick` in
   `spacetimedb/src/index.ts`). Auto-spawns in the `demo` room once a real user has a fix
   (anchored to that user's location, NYC fallback comes free via the client): `BOT_GROUP_COUNT`
-  **group** clusters (3 members each holding a fixed **triangle formation** → member-shaped heat,
-  no circling) + 6 **wanderer** bots spread ~1km (solo, no heat). Bots write only `presence`
+  **group** clusters (3 members holding a **triangle formation** around a center that **wanders
+  organically** — a non-circular meander, never a ring — so the huddle moves and its heat
+  spreads/trails while staying member-shaped) + 6 **wanderer** bots (solo, no heat). Bots write only `presence`
   (engine clusters them with **no** special-casing); `botTick` config-refreshes the fleet on a
   publish; despawns when no real user has been seen within the stale window (heat **not** wiped).
 - ✅ **Heat is huddle-driven and member-shaped (not circular).** Heat is generated **only** by
@@ -101,7 +102,8 @@ banners in `PROJECT.md` / `HUDDLE_LOGIC.md` / `TECHNICAL_PLAN.md`).
   `HEAT_CELL_DEGREES=0.0004`) accumulate (cap `HEAT_MAX=40`), **slow-fade** (`×0.97`/10s, ~4-min
   half-life), **never bulk-cleared**. **Client (`useMapboxMap`):** a single **steady** heatmap
   layer (tight render radius so the shape resolves) — **no pulsing** (the heatmap never animates).
-  (Bots walking in circles previously made ring-shaped heat — fixed by holding a formation.)
+  (Bots walking in perfect circles previously made ring-shaped heat — fixed: groups now hold a
+  formation and wander via incommensurate sines, which moves/spreads the heat without a ring.)
 - ✅ Two-client end-to-end (both share a location → huddle forms/warms/cools): verified via
   CLI + the live browser client (forming → activated → cooling → ended cycles in the feed).
 - ⬜ Purge remaining zone/tap-to-move prose from the spec docs (banners cover it for now);

@@ -57,9 +57,10 @@ const DECAY_TICK_MICROS = 10_000_000n; // 10s — cool huddle warmth + heatmap
 // with no engine changes. Bots do NOT write heat directly — heat comes only from the huddles
 // they form. Auto-spawn on the first real user's fix; auto-despawn when no real users remain.
 //
-// Two kinds: `group` (members hold a fixed FORMATION — a triangle for 3 — around a fixed
-// center; they do NOT walk in circles, so the huddle's heat is the footprint of the members,
-// hottest at the centroid) and `wanderer` (spread out, orbit solo → movement only, no heat).
+// Two kinds: `group` (members hold a fixed FORMATION — a triangle for 3 — around a center that
+// WANDERS organically across the map, a meandering non-circular path, so the huddle moves and
+// its heat spreads/trails without tracing a ring; heat is the members' footprint, hottest at
+// the centroid) and `wanderer` (spread out, orbit solo → movement only, no heat).
 const DEMO_ROOM_CODE = 'demo';
 const BOT_TICK_MICROS = 1_500_000n; // ~1.5s movement cadence (well inside STALE window)
 const BOT_WANDERER_COUNT = 6; // solo ambient movers spread across the area (no heat)
@@ -76,10 +77,12 @@ const BOT_WANDERER_MIN_SPREAD_M = 300; // keep wanderer homes well off the user/
 // spaced around the group center → a triangle for 3). They don't move, so the huddle's heat is
 // the shape of the members (corners) + a heavier centroid deposit (hot middle) — a rounded
 // polygon, NOT a swept circle. Members sit within proximity of the center so it stays one huddle.
-const BOT_GROUP_COUNT = 3; // how many standing huddle groups to place around the map
+const BOT_GROUP_COUNT = 3; // how many huddle groups to place around the map
 const BOT_GROUP_SIZE = 3; // bots per group (≥ MIN_USERS_FOR_HUDDLE); 3 → triangle
-const BOT_GROUP_DISTS_M = [300, 650, 950]; // each group's distance from the anchor
+const BOT_GROUP_DISTS_M = [300, 650, 950]; // each group's home (wander origin) distance from anchor
 const BOT_FORMATION_SPREAD_M = 50; // member distance from the group center (< PROXIMITY_RADIUS)
+const BOT_GROUP_WANDER_RADIUS_M = 300; // how far a group's center meanders from its home origin
+const BOT_GROUP_WANDER_SPEED = 6; // base wander rate (≈ m/s; actual a bit higher from the harmonics)
 
 // ═════════════════════════════════════════════════════════════════════════════
 // PART 1 — location input + proximity (Part 1 owner edits below)
@@ -1066,18 +1069,33 @@ function botPosition(ctx: any, b: any, now: bigint): { lat: number; lng: number 
     return { lat: b.homeLat + off.dLat, lng: b.homeLng + off.dLng };
   }
 
-  // Group (default): homeLat/Lng is the group's fixed CENTER, shared by all members; paramA is
-  // this member's fixed FORMATION angle. The member holds its corner of the formation (a
-  // triangle for 3) at BOT_FORMATION_SPREAD_M from the center — no circling, no drift. So the
-  // huddle's heat is the static footprint of its members (corners) with a hot centroid, not a
-  // swept circle. `tSeconds` is unused here on purpose (the group is stationary).
-  void tSeconds;
-  const off = metersToLatLng(
+  // Group (default): homeLat/Lng is the group's wander ORIGIN, shared by all members; paramA is
+  // this member's fixed FORMATION angle. The group CENTER meanders organically around the origin
+  // (a sum of incommensurate sines → a non-repeating, non-circular wander — never a ring), and
+  // each member holds its corner of the formation (a triangle for 3) at BOT_FORMATION_SPREAD_M
+  // from the moving center. So the huddle MOVES around the map (its heat spreads/trails) while
+  // its instantaneous shape stays the members' footprint, hottest at the centroid. No per-member
+  // orbit — the whole formation translates rigidly.
+  const seed = b.homeLat * 12.9898 + b.homeLng * 78.233; // per-group phase (shared by its members)
+  const w = BOT_GROUP_WANDER_SPEED / BOT_GROUP_WANDER_RADIUS_M; // base angular rate (rad/s)
+  const dxM =
+    BOT_GROUP_WANDER_RADIUS_M *
+    (0.5 * Math.sin(tSeconds * w + seed) +
+      0.3 * Math.sin(tSeconds * w * 1.7 + seed * 1.7) +
+      0.2 * Math.sin(tSeconds * w * 2.9 + seed * 2.3));
+  const dyM =
+    BOT_GROUP_WANDER_RADIUS_M *
+    (0.5 * Math.cos(tSeconds * w * 1.3 + seed * 1.1) +
+      0.3 * Math.cos(tSeconds * w * 2.1 + seed * 0.7) +
+      0.2 * Math.cos(tSeconds * w * 3.3 + seed * 1.9));
+  const cOff = metersToLatLng(dxM, dyM, b.homeLat);
+  const center = { lat: b.homeLat + cOff.dLat, lng: b.homeLng + cOff.dLng };
+  const fOff = metersToLatLng(
     Math.cos(b.paramA) * BOT_FORMATION_SPREAD_M,
     Math.sin(b.paramA) * BOT_FORMATION_SPREAD_M,
-    b.homeLat
+    center.lat
   );
-  return { lat: b.homeLat + off.dLat, lng: b.homeLng + off.dLng };
+  return { lat: center.lat + fOff.dLat, lng: center.lng + fOff.dLng };
 }
 
 // Remove the whole fleet + their derived rows (reset between demos).
