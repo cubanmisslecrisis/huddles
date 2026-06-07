@@ -38,7 +38,7 @@ function loadGoogleMapsScript(): Promise<void> {
 export async function searchNearbyPlaces(
   lat: number,
   lng: number,
-  radius: number = 1000,
+  radius: number = 1500,
   placeTypes: string[] = ['restaurant', 'cafe']
 ): Promise<Place[]> {
   try {
@@ -49,28 +49,56 @@ export async function searchNearbyPlaces(
     );
 
     const places: Place[] = [];
+    const keywordMap: Record<string, string> = {
+      restaurant: 'restaurant',
+      cafe: 'cafe',
+      bar: 'bar',
+      bakery: 'bakery',
+    };
 
     for (const type of placeTypes) {
-      const results = await new Promise<any[]>((resolve, reject) => {
+      const keyword = keywordMap[type] || type;
+
+      const results = await new Promise<any[]>((resolve) => {
         service.nearbySearch(
           {
             location: { lat, lng },
             radius,
-            type,
+            keyword,
             language: 'en',
+            rankBy: undefined,
           },
           (results: any, status: any) => {
             if (status === window.google.maps.places.PlacesServiceStatus.OK) {
               resolve(results || []);
+            } else if (status === window.google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
+              resolve([]);
             } else {
+              console.warn(`Search status: ${status}`);
               resolve([]);
             }
           }
         );
       });
 
+      // Filter out transit stations and other unrelated places
+      const filtered = results.filter((place) => {
+        const types = place.types || [];
+        const name = place.name?.toLowerCase() || '';
+
+        // Exclude transit/station types
+        const excludeTypes = ['transit_station', 'subway_station', 'train_station', 'bus_station'];
+        if (excludeTypes.some(t => types.includes(t))) return false;
+
+        // Exclude if the name contains these keywords
+        const excludeKeywords = ['subway', 'station', 'metro', 'train', 'bus'];
+        if (excludeKeywords.some(k => name.includes(k))) return false;
+
+        return true;
+      });
+
       places.push(
-        ...results.map((place) => ({
+        ...filtered.map((place) => ({
           placeId: place.place_id,
           name: place.name,
           lat: place.geometry.location.lat(),
@@ -103,7 +131,7 @@ export async function searchPlacesByQuery(
       document.createElement('div')
     );
 
-    const results = await new Promise<any[]>((resolve, reject) => {
+    const results = await new Promise<any[]>((resolve) => {
       service.nearbySearch(
         {
           location: { lat, lng },
@@ -121,7 +149,21 @@ export async function searchPlacesByQuery(
       );
     });
 
-    return results.map((place) => ({
+    // Filter out transit stations
+    const filtered = results.filter((place) => {
+      const types = place.types || [];
+      const name = place.name?.toLowerCase() || '';
+
+      const excludeTypes = ['transit_station', 'subway_station', 'train_station', 'bus_station'];
+      if (excludeTypes.some(t => types.includes(t))) return false;
+
+      const excludeKeywords = ['subway', 'metro', 'train', 'bus station'];
+      if (excludeKeywords.some(k => name.includes(k))) return false;
+
+      return true;
+    });
+
+    return filtered.map((place) => ({
       placeId: place.place_id,
       name: place.name,
       lat: place.geometry.location.lat(),
