@@ -15,19 +15,23 @@ export const PALETTE = [
   '#BA68C8',
 ];
 
-// Demo portrait pool (served from public/avatars). We have no real photos, so a key
-// (use a user's identity hex) maps deterministically to one of these — same hashing as
-// colorFor, so a person's photo is stable across markers, lists, and detail panels.
+// Avatars are the Club Penguin characters (served from public/characters). A key (use a
+// user's identity hex) maps deterministically to one — same hashing as colorFor, so a
+// person's penguin is stable across markers, lists, and detail panels. `sensei` is reserved
+// for "me" (ME_PHOTO), so the pool below is the other seven.
 export const AVATAR_PHOTOS = [
-  '/avatars/maya.png',
-  '/avatars/jake.png',
-  '/avatars/sophie.png',
-  '/avatars/leo.png',
-  '/avatars/nina.png',
+  '/characters/gary.webp',
+  '/characters/rookie.webp',
+  '/characters/bookworm.webp',
+  '/characters/hippie.webp',
+  '/characters/klutzy.webp',
+  '/characters/cadence.webp',
+  '/characters/herbert.webp',
 ];
 
-// The current user's avatar; passed explicitly so "me" is always consistent.
-export const ME_PHOTO = '/avatars/you.png';
+// The current user's avatar — a fixed penguin so "me" is always consistent (the yellow ring
+// distinguishes you anyway). `sensei` = "The Anchor": where you sit, the huddle forms.
+export const ME_PHOTO = '/characters/sensei.webp';
 
 function hashKey(key: string): number {
   let h = 0;
