@@ -1,20 +1,15 @@
-import { Search, Plus } from 'lucide-react';
 import { navTabs, type Lens } from '@/lib/nav-tabs';
 
 export function BottomNavIsland({
   active,
   onChange,
-  onSearch,
-  onAdd,
 }: {
   active: Lens;
   onChange: (lens: Lens) => void;
-  onSearch: () => void;
-  onAdd: () => void;
 }) {
   return (
     <div
-      className="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex items-end justify-between gap-2 px-4"
+      className="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex items-end justify-center gap-2 px-4"
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
     >
       <nav
@@ -44,23 +39,6 @@ export function BottomNavIsland({
           );
         })}
       </nav>
-
-      <div className="pointer-events-auto flex flex-col items-center gap-2.5">
-        <button
-          onClick={onSearch}
-          aria-label="Search"
-          className="flex h-14 w-14 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-[0_8px_24px_rgba(20,20,20,0.12)] transition hover:bg-secondary active:scale-95"
-        >
-          <Search className="h-6 w-6" strokeWidth={2.4} />
-        </button>
-        <button
-          onClick={onAdd}
-          aria-label="Add to map"
-          className="flex h-14 w-14 items-center justify-center rounded-full bg-red text-white shadow-[0_8px_24px_rgba(240,68,56,0.4)] transition hover:brightness-105 active:scale-95"
-        >
-          <Plus className="h-7 w-7" strokeWidth={2.6} />
-        </button>
-      </div>
     </div>
   );
 }

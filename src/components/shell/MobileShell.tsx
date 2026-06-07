@@ -10,6 +10,7 @@ import { FriendsPanel } from '@/components/lens/FriendsPanel';
 import { WrappedPanel } from '@/components/lens/WrappedPanel';
 import { DetailPanel } from '@/components/DetailPanel';
 import { Avatar } from '@/components/Avatar';
+import { Search, Plus } from 'lucide-react';
 import type { Lens } from '@/lib/nav-tabs';
 import type { LayerKey, FilterKey } from '@/lib/places-data';
 import type { MapAvatar, HeatPoint, Selection } from '@/components/map/markers';
@@ -121,9 +122,25 @@ export function MobileShell({
             nearby={friends.filter((f) => f.online).map((f) => ({ key: f.key, name: f.name }))}
           />
         </div>
-        <button onClick={onOpenProfile} aria-label="Your profile" className="pointer-events-auto shrink-0 rounded-full">
-          <Avatar name={me.name} colorKey={me.key} size={44} className="ring-2 ring-yellow ring-offset-2 ring-offset-background" />
-        </button>
+        <div className="pointer-events-auto flex shrink-0 flex-col items-end gap-2.5">
+          <button onClick={onOpenProfile} aria-label="Your profile" className="rounded-full">
+            <Avatar name={me.name} colorKey={me.key} size={44} className="ring-2 ring-yellow ring-offset-2 ring-offset-background" />
+          </button>
+          <button
+            onClick={onSearch}
+            aria-label="Search"
+            className="flex h-14 w-14 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-[0_8px_24px_rgba(20,20,20,0.12)] transition hover:bg-secondary active:scale-95"
+          >
+            <Search className="h-6 w-6" strokeWidth={2.4} />
+          </button>
+          <button
+            onClick={onAdd}
+            aria-label="Add to map"
+            className="flex h-14 w-14 items-center justify-center rounded-full bg-red text-white shadow-[0_8px_24px_rgba(240,68,56,0.4)] transition hover:brightness-105 active:scale-95"
+          >
+            <Plus className="h-7 w-7" strokeWidth={2.6} />
+          </button>
+        </div>
       </div>
 
       <BottomSheet
@@ -136,7 +153,7 @@ export function MobileShell({
         {sheetContent}
       </BottomSheet>
 
-      <BottomNavIsland active={lens} onChange={onChangeLens} onSearch={onSearch} onAdd={onAdd} />
+      <BottomNavIsland active={lens} onChange={onChangeLens} />
     </div>
   );
 }

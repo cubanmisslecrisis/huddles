@@ -49,6 +49,21 @@ export function MapPanel({
       </PanelCard>
 
       <PanelCard bare={bare}>
+        <SectionHeader title="Active Huddles" />
+        {huddles.length > 0 ? (
+          <div className="mt-3 flex flex-col gap-3">
+            {huddles.map((h) => (
+              <HuddleRow key={h.id} huddle={h} onSelect={() => onSelect({ kind: 'huddle', id: h.id })} />
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-muted-foreground">
+            No huddles yet — get within ~100m of someone in your room to form one.
+          </p>
+        )}
+      </PanelCard>
+
+      <PanelCard bare={bare}>
         <SectionHeader title="Recommended for you" />
         <button
           onClick={() => onSelect({ kind: 'pin', id: featuredReco.pinId })}
@@ -73,21 +88,6 @@ export function MapPanel({
             </div>
           </div>
         </button>
-      </PanelCard>
-
-      <PanelCard bare={bare}>
-        <SectionHeader title="Active Huddles" />
-        {huddles.length > 0 ? (
-          <div className="mt-3 flex flex-col gap-3">
-            {huddles.map((h) => (
-              <HuddleRow key={h.id} huddle={h} onSelect={() => onSelect({ kind: 'huddle', id: h.id })} />
-            ))}
-          </div>
-        ) : (
-          <p className="mt-3 text-sm text-muted-foreground">
-            No huddles yet — get within ~100m of someone in your room to form one.
-          </p>
-        )}
       </PanelCard>
     </div>
   );
