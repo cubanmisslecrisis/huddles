@@ -17,15 +17,16 @@ const WARMTH_LAYER_ID = 'activity-heat-layer';
 // Scatter each heat cell into several sub-points so the Gaussian kernels overlap
 // irregularly — breaking the "perfect circle" look of a single point.
 // Offsets are fixed (not random) so the shape is stable across renders.
+// Distances are small (~10-20m) so the blob stays local to the cell.
 const SCATTER: Array<[number, number, number]> = [
   // [distanceMeters, angleDeg, weightFraction]
   [0,   0,   1.0],  // center — full weight
-  [38,  17,  0.6],
-  [52,  88,  0.5],
-  [44, 160,  0.55],
-  [58, 225,  0.45],
-  [36, 295,  0.6],
-  [62, 342,  0.4],
+  [12,  22,  0.65],
+  [17,  95,  0.55],
+  [14, 165,  0.60],
+  [18, 230,  0.50],
+  [11, 300,  0.65],
+  [20, 348,  0.45],
 ];
 const METERS_PER_DEG_LAT = 111_320;
 
@@ -148,22 +149,20 @@ export function useMapboxMap({
         'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 0, 0, 4, 0.4, 8, 0.7, 16, 1],
         // Intensity amplifies the kernel density — stronger at closer zoom.
         'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 0.4, 13, 1.0, 15, 1.8, 17, 2.5],
-        // Classic heatmap: transparent → blue → cyan → green → yellow → orange → red
+        // Gradient blob: transparent → purple → pink → coral → orange (hot core)
         'heatmap-color': [
           'interpolate',
           ['linear'],
           ['heatmap-density'],
           0,    'rgba(0,0,0,0)',
-          0.15, 'rgba(0,0,255,0.5)',
-          0.3,  'rgba(0,180,255,0.65)',
-          0.45, 'rgba(0,255,160,0.75)',
-          0.6,  'rgba(180,255,0,0.82)',
-          0.75, 'rgba(255,200,0,0.88)',
-          0.88, 'rgba(255,100,0,0.93)',
-          1,    'rgba(255,0,0,1)',
+          0.2,  'rgba(120,40,220,0.5)',
+          0.4,  'rgba(220,50,180,0.7)',
+          0.6,  'rgba(255,80,100,0.82)',
+          0.8,  'rgba(255,140,40,0.9)',
+          1,    'rgba(255,200,60,1)',
         ],
-        // Larger radius = more organic spread; scales up as you zoom in.
-        'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 10, 20, 12, 45, 14, 80, 15, 110, 16, 150, 17, 200],
+        // Radius scaled to ~cell size on screen. At zoom 14 one ~200m cell ≈ 27px.
+        'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 10, 8, 12, 16, 14, 30, 15, 55, 16, 100, 17, 180],
         'heatmap-opacity': warmthEnabled ? 0.8 : 0,
       };
 
