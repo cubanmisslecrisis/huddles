@@ -16,6 +16,7 @@ import type { Lens } from '@/lib/nav-tabs';
 import type { SheetState } from '@/components/panels/BottomSheet';
 import { filterToLayers, getPin, type FilterKey, type LayerKey } from '@/lib/places-data';
 import { distanceMeters } from '@/lib/avatar';
+import { CharacterKeysContext } from '@/lib/characters';
 
 // Demo fallback (~Midtown NYC) with small jitter, used when geolocation is denied.
 function demoLoc(): { lat: number; lng: number } {
@@ -320,6 +321,16 @@ function App() {
     pingNearby().catch(console.error);
   };
 
+  // Scoped to current room so mod-8 wrapping only happens with 9+ people in the same room.
+  const roomPresenceHexes = useMemo(
+    () => new Set(presence.filter(p => p.roomId === myRoomId && p.status !== 'offline').map(p => p.identity.toHexString())),
+    [presence, myRoomId]
+  );
+  const sortedKeys = useMemo(
+    () => [...users.map(u => u.identity.toHexString()).filter(h => roomPresenceHexes.has(h))].sort(),
+    [users, roomPresenceHexes]
+  );
+
   // ── Connecting ──────────────────────────────────────────────────────────────
   if (!connected || !identity) {
     return (
@@ -375,7 +386,9 @@ function App() {
   }
 
   // ── Joined: the mobile social map ───────────────────────────────────────────
+
   return (
+    <CharacterKeysContext.Provider value={sortedKeys}>
     <>
       <MobileShell
         lens={lens}
@@ -413,8 +426,10 @@ function App() {
         onOpenChange={setShowProfile}
         me={me}
         onLeave={() => leaveRoom().catch(console.error)}
+        friendCount={friends.length}
       />
     </>
+    </CharacterKeysContext.Provider>
   );
 }
 

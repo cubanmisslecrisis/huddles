@@ -1,9 +1,8 @@
+import { useState } from 'react';
 import { colorFor, initialOf } from '@/lib/avatar';
+import { useCharacterFor } from '@/lib/characters';
 import { cn } from '@/lib/utils';
 
-// The one stand-in for every avatar/photo in the design: a hashed-color disc with
-// the person's initial. `colorKey` keeps a user's color stable (use their identity
-// hex); `dot` adds a presence indicator; `selected` adds a focus ring.
 export function Avatar({
   name,
   colorKey,
@@ -21,30 +20,49 @@ export function Avatar({
   ring?: string;
   className?: string;
 }) {
+  const [imgFailed, setImgFailed] = useState(false);
   const bg = colorFor(colorKey ?? name);
+  const character = useCharacterFor(colorKey ?? '');
+  const useImage = !!colorKey && !imgFailed;
+
+  const dotSize = Math.max(8, size * 0.28);
+  const shadowStyle = selected
+    ? `0 0 0 4px color-mix(in oklab, ${ring ?? bg} 35%, transparent)`
+    : '0 4px 12px rgba(20,20,20,0.18)';
+
   return (
     <span
       className={cn(
-        'relative inline-flex shrink-0 items-center justify-center rounded-full border-2 border-white font-bold text-white',
-        className
+        'relative inline-flex shrink-0 items-center justify-center rounded-full border-2 border-white',
+        className,
       )}
       style={{
         width: size,
         height: size,
-        background: bg,
+        background: useImage ? 'transparent' : bg,
         fontSize: size * 0.42,
-        boxShadow: selected
-          ? `0 0 0 4px color-mix(in oklab, ${ring ?? bg} 35%, transparent)`
-          : '0 4px 12px rgba(20,20,20,0.18)',
+        boxShadow: shadowStyle,
+        overflow: 'hidden',
       }}
     >
-      {initialOf(name)}
+      {useImage ? (
+        <img
+          src={character.path}
+          alt={character.persona}
+          onError={() => setImgFailed(true)}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top' }}
+          draggable={false}
+        />
+      ) : (
+        <span className="font-bold text-white select-none">{initialOf(name)}</span>
+      )}
+
       {dot && (
         <span
           className="absolute bottom-0 right-0 rounded-full border-2 border-card"
           style={{
-            width: Math.max(8, size * 0.28),
-            height: Math.max(8, size * 0.28),
+            width: dotSize,
+            height: dotSize,
             background: dot === 'online' ? 'var(--color-green)' : 'var(--color-muted-foreground)',
           }}
         />

@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { Music, Camera, Heart, Bookmark, Star } from 'lucide-react';
 import { colorFor, initialOf } from '@/lib/avatar';
+import { useCharacterFor } from '@/lib/characters';
 import { pinColor, onYellow } from '@/lib/theme';
 import type { StaticPin } from '@/lib/places-data';
 
@@ -68,7 +70,10 @@ export function FriendMarker({
   dimmed: boolean;
   onSelect: () => void;
 }) {
+  const [imgFailed, setImgFailed] = useState(false);
   const color = avatar.isMe ? MY_BLUE : colorFor(avatar.key);
+  const character = useCharacterFor(avatar.key);
+
   return (
     <button
       onClick={onSelect}
@@ -78,7 +83,7 @@ export function FriendMarker({
     >
       <span className="relative block transition-transform duration-200 group-hover:-translate-y-1">
         <span
-          className="flex items-center justify-center rounded-full border-2 border-white font-bold text-white"
+          className="flex items-center justify-center overflow-hidden rounded-full border-2 border-white font-bold text-white"
           style={{
             width: 42,
             height: 42,
@@ -92,7 +97,17 @@ export function FriendMarker({
                 : '0 8px 16px rgba(20,20,20,0.18)',
           }}
         >
-          {initialOf(avatar.name)}
+          {imgFailed ? (
+            initialOf(avatar.name)
+          ) : (
+            <img
+              src={character.path}
+              alt={avatar.name}
+              onError={() => setImgFailed(true)}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top' }}
+              draggable={false}
+            />
+          )}
         </span>
         <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-green" />
         <Tail color={color} />
