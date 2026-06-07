@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { type MapControls } from '@/components/map/MapCanvas';
 import { GoogleMapsStyle } from '@/components/map/GoogleMapsStyle';
 import { MapStatusChips, MapFilterChips } from '@/components/map/MapChips';
 import { BottomNavIsland } from '@/components/shell/BottomNavIsland';
@@ -21,13 +22,17 @@ export function MobileShell({
   onSelect,
   sheetState,
   onSheetStateChange,
+  activeLayers,
   filter,
   onFilter,
   onSearch,
   onAdd,
   onPing,
   onOpenProfile,
+  controlsRef,
   me,
+  avatars,
+  heat,
   myLoc,
   friends,
   huddles,
@@ -44,13 +49,17 @@ export function MobileShell({
   onSelect: (s: Selection) => void;
   sheetState: SheetState;
   onSheetStateChange: (s: SheetState) => void;
+  activeLayers: Record<LayerKey, boolean>;
   filter: FilterKey;
   onFilter: (k: FilterKey) => void;
   onSearch: () => void;
   onAdd: () => void;
   onPing: () => void;
   onOpenProfile: () => void;
+  controlsRef: React.MutableRefObject<MapControls | null>;
   me: MeVM;
+  avatars: MapAvatar[];
+  heat: HeatPoint[];
   myLoc: { lat: number; lng: number } | null;
   friends: FriendVM[];
   huddles: HuddleVM[];
@@ -91,7 +100,15 @@ export function MobileShell({
 
   return (
     <div className="relative h-dvh w-full overflow-hidden bg-background">
-      <GoogleMapsStyle myLoc={myLoc} />
+      <GoogleMapsStyle
+        avatars={avatars}
+        heat={heat}
+        myLoc={myLoc}
+        selection={selection}
+        onSelect={onSelect}
+        activeLayers={activeLayers}
+        controlsRef={controlsRef}
+      />
 
       {/* Top layer: status chips + profile avatar */}
       <div

@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { searchNearbyPlaces } from '@/lib/google-places';
-import { GoogleMap } from './GoogleMap';
 import type { Place } from '@/lib/google-places';
+import { MapCanvas } from './MapCanvas';
+import type { MapAvatar, HeatPoint, Selection } from './markers';
+import type { LayerKey } from '@/lib/places-data';
+import type { MapControls } from './MapCanvas';
 
 const CATEGORIES = [
   { id: 'restaurant', label: 'Restaurants', emoji: '🍽️', types: ['restaurant'] },
@@ -15,9 +18,21 @@ const CATEGORIES = [
 ];
 
 export function GoogleMapsStyle({
+  avatars,
+  heat,
   myLoc,
+  selection,
+  onSelect,
+  activeLayers,
+  controlsRef,
 }: {
+  avatars: MapAvatar[];
+  heat: HeatPoint[];
   myLoc: { lat: number; lng: number } | null;
+  selection: Selection;
+  onSelect: (s: Selection) => void;
+  activeLayers: Record<LayerKey, boolean>;
+  controlsRef?: React.MutableRefObject<MapControls | null>;
 }) {
   const [places, setPlaces] = useState<Place[]>([]);
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
@@ -163,11 +178,17 @@ export function GoogleMapsStyle({
 
       {/* Map */}
       <div className="flex-1">
-        <GoogleMap
+        <MapCanvas
+          avatars={avatars}
+          heat={heat}
+          myLoc={myLoc}
+          selection={selection}
+          onSelect={onSelect}
+          activeLayers={activeLayers}
+          controlsRef={controlsRef}
           places={filteredPlaces}
           selectedPlace={selectedPlace}
           onSelectPlace={setSelectedPlace}
-          myLoc={myLoc}
         />
       </div>
     </div>
