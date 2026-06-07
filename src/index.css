@@ -184,58 +184,31 @@
   }
 }
 
-/* Place Label Markers (Google Maps Style) */
-.place-label-marker {
+/* Place Icon Markers - Minimalist */
+.place-icon-marker {
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.place-label {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  padding: 3px 6px;
-  background: rgba(255, 255, 255, 0.92);
-  border-radius: 16px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  font-size: 20px;
+  width: 28px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
   transition: all 0.2s ease;
-  border: 0.5px solid rgba(0, 0, 0, 0.06);
-  white-space: nowrap;
-  pointer-events: auto;
-}
-
-.place-label:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  transform: scale(1.08);
-}
-
-.place-label.selected {
-  background: rgba(66, 133, 244, 0.9);
-  color: white;
-  box-shadow: 0 2px 10px rgba(66, 133, 244, 0.3);
-}
-
-.place-icon {
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  border: 1px solid rgba(0, 0, 0, 0.08);
   line-height: 1;
 }
 
-.place-name {
-  font-size: 10px;
-  font-weight: 600;
-  color: #333;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 80px;
-  line-height: 1.2;
+.place-icon-marker:hover {
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  transform: scale(1.15);
 }
 
-.place-label.selected .place-name {
-  color: white;
+.place-icon-marker.selected {
+  background: rgba(66, 133, 244, 0.85);
+  box-shadow: 0 2px 8px rgba(66, 133, 244, 0.35);
+  transform: scale(1.2);
 }
