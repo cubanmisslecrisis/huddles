@@ -399,7 +399,6 @@ function App() {
         friends={friends}
         huddles={huddleList}
         events={activityFeed}
-        board={board}
         nearbyCount={nearbyCount}
         formingCount={formingCount}
         activeHuddles={activeHuddles}

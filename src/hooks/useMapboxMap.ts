@@ -64,16 +64,16 @@ export function useMapboxMap({
     setMounted(true);
   }, []);
 
-  // Pulsing animation for heatmap
+  // Spreading/contracting animation for heatmap radius
   useEffect(() => {
     let animationFrameId: number;
     let startTime = Date.now();
 
     const animate = () => {
-      const elapsed = (Date.now() - startTime) % 2500;
-      const progress = elapsed / 2500;
-      const pulse = 0.4 + Math.sin(progress * Math.PI * 2) * 0.45;
-      setHeatmapPulse(pulse);
+      const elapsed = (Date.now() - startTime) % 3000;
+      const progress = elapsed / 3000;
+      const spread = 0.7 + Math.sin(progress * Math.PI * 2) * 0.3;
+      setHeatmapPulse(spread);
       animationFrameId = requestAnimationFrame(animate);
     };
 
@@ -140,8 +140,6 @@ export function useMapboxMap({
           source: WARMTH_SOURCE_ID,
           slot: 'top',
           paint: {
-            // Feature branch's "dramatic" tuning + rAF opacity pulse (heatmapPulse), but
-            // recolored to our warm-orange palette instead of the rainbow gradient.
             'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 0, 0, 0.5, 0.3, 1, 0.8, 2, 1],
             'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 12, 1.2, 14, 2.0, 16, 3.0, 17, 4.0],
             'heatmap-color': [
@@ -149,24 +147,38 @@ export function useMapboxMap({
               ['linear'],
               ['heatmap-density'],
               0,
-              'rgba(250, 137, 39, 0)',
+              'rgba(255, 255, 0, 0)',
+              0.08,
+              'rgba(255, 200, 0, 0.4)',
               0.15,
-              'rgba(255, 210, 160, 0.45)',
+              'rgba(255, 140, 0, 0.6)',
+              0.25,
+              'rgba(255, 80, 20, 0.75)',
               0.35,
-              'rgba(255, 170, 90, 0.65)',
-              0.55,
-              'rgba(250, 137, 39, 0.8)',
-              0.75,
-              'rgba(235, 95, 25, 0.9)',
+              'rgba(255, 40, 100, 0.85)',
+              0.5,
+              'rgba(200, 20, 200, 0.9)',
+              0.65,
+              'rgba(100, 50, 255, 0.92)',
+              0.8,
+              'rgba(0, 150, 255, 0.95)',
+              0.9,
+              'rgba(0, 255, 200, 0.97)',
               1,
-              'rgba(200, 55, 10, 1)',
+              'rgba(0, 255, 150, 1)',
             ],
-            'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 10, 15, 12, 35, 14, 65, 15, 90, 16, 120, 17, 160],
-            'heatmap-opacity': warmthEnabled ? heatmapPulse : 0,
+            'heatmap-radius': warmthEnabled
+              ? ['interpolate', ['linear'], ['zoom'], 10, 15 * heatmapPulse, 12, 35 * heatmapPulse, 14, 65 * heatmapPulse, 15, 90 * heatmapPulse, 16, 120 * heatmapPulse, 17, 160 * heatmapPulse]
+              : ['interpolate', ['linear'], ['zoom'], 10, 15, 12, 35, 14, 65, 15, 90, 16, 120, 17, 160],
+            'heatmap-opacity': warmthEnabled ? 0.85 : 0,
           },
         });
       } else {
-        map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-opacity', warmthEnabled ? heatmapPulse : 0);
+        const radiusInterpolation: mapboxgl.ExpressionSpecification = warmthEnabled
+          ? ['interpolate', ['linear'], ['zoom'], 10, 15 * heatmapPulse, 12, 35 * heatmapPulse, 14, 65 * heatmapPulse, 15, 90 * heatmapPulse, 16, 120 * heatmapPulse, 17, 160 * heatmapPulse]
+          : ['interpolate', ['linear'], ['zoom'], 10, 15, 12, 35, 14, 65, 15, 90, 16, 120, 17, 160];
+        map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-radius', radiusInterpolation);
+        map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-opacity', warmthEnabled ? 0.85 : 0);
       }
     };
 
@@ -224,5 +236,5 @@ export function useMapboxMap({
 
   const markerPortals = mounted ? markerDefs.map((def) => createPortal(def.node, getContainer(def.key), def.key)) : null;
 
-  return { mapContainerRef, tokenMissing, markerPortals, recenter, flyTo, zoomIn, zoomOut };
+  return { mapContainerRef, tokenMissing, markerPortals, recenter, flyTo, zoomIn, zoomOut, mapRef };
 }

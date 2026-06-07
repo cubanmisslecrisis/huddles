@@ -72,8 +72,7 @@ export function useMapMarkerDefs({
     if (origin) {
       for (const p of staticPins) {
         const visible =
-          ((p.kind === 'reco' || p.kind === 'music') && activeLayers.recs) ||
-          ((p.kind === 'saved' || p.kind === 'content') && activeLayers.saved);
+          (p.kind === 'reco' && activeLayers.recs) || (p.kind === 'saved' && activeLayers.saved);
         if (!visible) continue;
         const resolved: ResolvedPin = { ...p, lat: origin.lat + p.dLat, lng: origin.lng + p.dLng };
         defs.push({

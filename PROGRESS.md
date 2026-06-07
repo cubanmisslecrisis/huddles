@@ -141,9 +141,13 @@ path alias added. Structure: `src/components/{map,shell,panels,lens,flows,ui}` +
 - ✅ **Status chips** ("N friends nearby" / "N huddles forming"), **filter chips**, draggable
   **bottom sheet** (peek/half/full), **Search** (real, client-side over friends + huddles +
   places → recenters the map), **Ping** sheet → `pingNearby()`.
-- 🟡 **Places domain (static stubs, no backend):** recommendation cards + place pins
-  (anchored to the user via lat/lng offsets in `src/lib/places-data.ts`), **Add-to-map** sheet
-  (no-op), category filters. **Saved lens dropped.** TODO: real `recommendation`/places table.
+- 🟡 **Places domain (static stubs, no backend):** category **emoji pins** (🥐 bakery, 🍺 bar,
+  ☕ café, 🍜 restaurant, 🌳 park, 🎵 music — `CATEGORY_META` in `src/lib/places-data.ts`),
+  anchored to the user via lat/lng offsets. Tapping a pin opens a detail panel with the place's
+  **rating + review count** and a **"friends who've been here"** avatar row (both hard-coded
+  stubs). Recommendation cards + category filters retained. **Add-to-map** sheet (no-op),
+  **Saved lens dropped.** TODO: real `recommendation`/places table; derive friends-visited from
+  ended huddles.
 - ⬜ **Wrapped / retrospective screen** — who/where/when/how-long from ended huddles.
 - ⬜ **City exploration %** (needs `visited_cell`).
 

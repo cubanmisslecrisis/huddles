@@ -1,13 +1,20 @@
 import type { ReactNode } from 'react';
-import { X, Flame, Users, Plus, Bookmark } from 'lucide-react';
+import { X, Flame, Users, Plus, Bookmark, Star } from 'lucide-react';
 import type { FriendVM, HuddleVM } from '@/lib/view';
 import type { Selection } from '@/components/map/markers';
-import { getPin, getReco, type PinColorName } from '@/lib/places-data';
+import { getPin, getReco, CATEGORY_META, type PinColorName } from '@/lib/places-data';
 import { Avatar } from '@/components/Avatar';
-import { PanelCard } from '@/components/panel-ui';
+import { PanelCard, AvatarStack } from '@/components/panel-ui';
 import { Button } from '@/components/ui/button';
 import { distanceLabel, relativeTimeFromMicros } from '@/lib/avatar';
-import { huddleStatusColor, huddleStatusLabel, onYellow, pinColor } from '@/lib/theme';
+import { huddleStatusColor, huddleStatusLabel, pinColor } from '@/lib/theme';
+
+// "Maya, Jake +2 have been here" — a compact summary of friends who've visited.
+function friendsSummary(names: string[]): string {
+  if (names.length === 1) return `${names[0]} has been here`;
+  if (names.length === 2) return `${names[0]} & ${names[1]} have been here`;
+  return `${names[0]}, ${names[1]} +${names.length - 2} have been here`;
+}
 
 function DetailShell({
   title,
@@ -140,10 +147,12 @@ export function DetailPanel({
   // pin (static place)
   const reco = getReco(selection.id);
   const pin = getPin(selection.id);
-  const placeName = reco?.placeName ?? pin?.label ?? pin?.category ?? 'Saved place';
-  const category = reco?.category ?? pin?.category ?? 'Place';
-  const dist = reco?.distanceLabel ?? pin?.distanceLabel ?? '';
+  const meta = pin ? CATEGORY_META[pin.category] : null;
+  const placeName = pin?.name ?? reco?.placeName ?? 'Place';
+  const categoryLabel = meta?.label ?? reco?.category ?? 'Place';
+  const dist = pin?.distanceLabel ?? reco?.distanceLabel ?? '';
   const tileColor = pinColor((pin?.color ?? 'yellow') as PinColorName);
+  const visitedFriends = pin?.friendsVisited ?? [];
 
   return (
     <DetailShell
@@ -153,25 +162,47 @@ export function DetailPanel({
         <div>
           <p className="font-heading text-xl font-black text-foreground">{placeName}</p>
           <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            {category}
-            {dist ? ` · ${dist}` : ''} ·
-            <span className="flex items-center gap-0.5 font-semibold text-warmth">
-              <Flame className="h-3.5 w-3.5" /> Warm now
-            </span>
+            {categoryLabel}
+            {dist ? ` · ${dist}` : ''}
           </p>
         </div>
       }
     >
-      <div className="flex h-32 items-center justify-center rounded-2xl" style={{ background: `color-mix(in oklab, ${tileColor} 22%, transparent)` }}>
-        <span className="font-heading text-lg font-black" style={{ color: pin?.color === 'yellow' ? onYellow : tileColor }}>
-          {category}
-        </span>
+      <div
+        className="flex h-32 items-center justify-center rounded-2xl text-6xl"
+        style={{ background: `color-mix(in oklab, ${tileColor} 22%, transparent)` }}
+      >
+        <span aria-hidden>{meta?.emoji ?? '📍'}</span>
       </div>
-      {reco && (
-        <span className="inline-block w-fit rounded-full bg-pink/15 px-2.5 py-1 text-xs font-bold text-pink">
-          {reco.tasteMatch}% taste match
-        </span>
+
+      {pin && (
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-1 text-base font-black text-foreground">
+            <Star className="h-4 w-4 text-yellow" fill="currentColor" /> {pin.rating.toFixed(1)}
+          </span>
+          <span className="text-sm text-muted-foreground">· {pin.reviewCount.toLocaleString()} reviews</span>
+          {reco && (
+            <span className="ml-auto inline-block rounded-full bg-pink/15 px-2.5 py-1 text-xs font-bold text-pink">
+              {reco.tasteMatch}% taste match
+            </span>
+          )}
+        </div>
       )}
+
+      <div>
+        <p className="mb-2 font-heading text-sm font-extrabold uppercase tracking-wide text-foreground">
+          Friends who've been here
+        </p>
+        {visitedFriends.length > 0 ? (
+          <div className="flex items-center gap-3">
+            <AvatarStack people={visitedFriends.slice(0, 5).map((n) => ({ key: n, name: n }))} size={9} />
+            <span className="text-sm text-muted-foreground">{friendsSummary(visitedFriends)}</span>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">None of your friends have checked in here yet.</p>
+        )}
+      </div>
+
       <div className="flex gap-2">
         <Button variant="brandBlue" size="lg" className="flex-1 font-bold" disabled>
           Start huddle

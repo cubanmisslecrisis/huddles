@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import type { FriendVM, HuddleVM } from '@/lib/view';
 import type { Selection } from '@/components/map/markers';
-import { recommendations, staticPins } from '@/lib/places-data';
+import { recommendations, staticPins, CATEGORY_META } from '@/lib/places-data';
 import { relativeTimeFromMicros } from '@/lib/avatar';
 import { huddleStatusLabel } from '@/lib/theme';
 import { Avatar } from '@/components/Avatar';
@@ -47,8 +47,8 @@ function buildGroups(query: string, friends: FriendVM[], huddles: HuddleVM[]): G
       .filter((p) => !recommendations.some((r) => r.pinId === p.id))
       .map((p) => ({
         id: p.id,
-        title: p.label ?? p.category ?? 'Saved place',
-        subtitle: `${p.category ?? 'Place'}${p.distanceLabel ? ` · ${p.distanceLabel}` : ''}`,
+        title: p.name,
+        subtitle: `${CATEGORY_META[p.category].label}${p.distanceLabel ? ` · ${p.distanceLabel}` : ''}`,
         colorKey: p.id,
         selection: { kind: 'pin', id: p.id } as const,
       })),
