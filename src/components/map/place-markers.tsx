@@ -57,11 +57,12 @@ export function PlaceMarkers({
 
         const isSelected = selectedPlace?.placeId === place.placeId;
         const icon = getPlaceIcon(place.type || '');
+        const shortName = place.name.length > 15 ? place.name.substring(0, 12) + '...' : place.name;
 
         el.innerHTML = `
           <div class="place-label ${isSelected ? 'selected' : ''}">
             <span class="place-icon">${icon}</span>
-            <span class="place-name">${place.name}</span>
+            <span class="place-name">${shortName}</span>
           </div>
         `;
 
