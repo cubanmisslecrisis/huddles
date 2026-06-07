@@ -850,6 +850,14 @@ function endHuddle(ctx: any, h: any, message: string): void {
 export const huddleTick = spacetimedb.reducer(
   { timer: huddleTickTimer.rowType },
   (ctx, { timer: _timer }) => {
+    // Self-heal the bot schedule. `init` only runs on first DB creation, so a timer
+    // ADDED after a database already exists (hot-swap publish) is never scheduled there.
+    // huddleTick is always running, so it bootstraps any missing timer idempotently —
+    // bots then start on the next tick without a destructive re-init. (No-op once present.)
+    if ([...ctx.db.botTickTimer.iter()].length === 0) {
+      ctx.db.botTickTimer.insert({ scheduledId: 0n, scheduledAt: ScheduleAt.interval(BOT_TICK_MICROS) });
+    }
+
     const roomIds = new Set<bigint>();
     for (const p of ctx.db.presence.iter()) roomIds.add(p.roomId);
     const sorted = [...roomIds].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
