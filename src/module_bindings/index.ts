@@ -161,6 +161,20 @@ const tablesSchema = __schema({
       { name: 'room_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, RoomRow),
+  savedPlace: __table({
+    name: 'saved_place',
+    indexes: [
+      { accessor: 'id', name: 'saved_place_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'by_room', name: 'saved_place_room_id_idx_btree', algorithm: 'btree', columns: [
+        'roomId',
+      ] },
+    ],
+    constraints: [
+      { name: 'saved_place_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, SavedPlaceRow),
   score: __table({
     name: 'score',
     indexes: [
@@ -176,20 +190,6 @@ const tablesSchema = __schema({
       { name: 'score_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, ScoreRow),
-  savedPlace: __table({
-    name: 'saved_place',
-    indexes: [
-      { accessor: 'id', name: 'saved_place_id_idx_btree', algorithm: 'btree', columns: [
-        'id',
-      ] },
-      { accessor: 'by_room', name: 'saved_place_room_id_idx_btree', algorithm: 'btree', columns: [
-        'roomId',
-      ] },
-    ],
-    constraints: [
-      { name: 'saved_place_id_key', constraint: 'unique', columns: ['id'] },
-    ],
-  }, SavedPlaceRow),
   user: __table({
     name: 'user',
     indexes: [

@@ -442,12 +442,33 @@ Rank users by warmth points (MVP), optionally huddles joined / total huddle time
 
 ---
 
-## Bot Mode (optional, for demo reliability)
+## Bot Mode — IMPLEMENTED (auto-spawn demo bots + ambient heat)
 
-- create bot `user`/`presence` rows in the same room
-- a scheduled `bot_tick` moves bots to random zones every few seconds via the same `moveToZone` path (seed randomness with `ctx.random`)
-- bots use no special huddle logic
-- UI controls: Spawn Bots / Stop Bots
+> **MODEL UPDATE:** This is live in `spacetimedb/src/index.ts` and supersedes the original
+> sketch below. The old plan said bots move "via the same `moveToZone` path" — that path no
+> longer exists (live-GPS model). Bots instead write `presence` directly and call the existing
+> `bumpHeat`, i.e. the **same writes `heartbeatLocation` performs**, just for a synthetic
+> identity (a reducer can't call `heartbeatLocation` for a bot — it keys off `ctx.sender`).
+
+- **`bot` table** (`identity` pk, `roomId`, `name`, `kind` ∈ `huddler`|`wanderer`, `homeLat`,
+  `homeLng`, `paramA` phase, `spawnedAt`). Bot positions live in the normal `presence` table,
+  so the huddle engine treats them as ordinary users — **no special huddle logic**, as intended.
+- **Synthetic identities** are minted with `new Identity(ctx.random.bigintInRange(0n, (1n<<256n)-1n))`
+  and persisted, so they're stable across ticks. Real clients never collide.
+- **Scheduled `botTick`** (~1.5s) scoped to the `DEMO_ROOM_CODE` room:
+  - **auto-spawn** once a real (non-bot) user has a recent fix — anchored to that user's
+    location; NYC fallback is free because the client heartbeats NYC-jittered coords when GPS
+    is denied. Spawns `BOT_HUDDLER_COUNT` huddlers (share one rendezvous, scripted to cluster
+    then scatter on a `HOLD`/`GAP` cycle so the full loop fires reliably) + `BOT_WANDERER_COUNT`
+    wanderers (homes spread in an annulus, each orbiting its home).
+  - **move** every bot (deterministic, a pure function of `ctx.timestamp`) and `bumpHeat`.
+  - keep `BOT_AMBIENT_HOTSPOTS` cells warm each tick (+ a spawn-time burst) so the heatmap is
+    rich and city-alive even where no avatar stands.
+  - **auto-despawn** the whole fleet when no real user has been seen within the stale window
+    (liveness is RECENCY-based, not connection `status`, so a brief disconnect/wifi blip doesn't
+    collapse the demo).
+- **No UI controls** — auto-spawn/despawn keyed to the `demo` room (per product decision).
+  All bot tuning lives in the `BOT_*` constants block.
 
 ---
 

@@ -87,7 +87,14 @@ banners in `PROJECT.md` / `HUDDLE_LOGIC.md` / `TECHNICAL_PLAN.md`).
   full mobile map on maincloud (real merged huddle + friend distance observed in-browser).
 
 ### Demo & polish
-- ⬜ Bot mode (simulated movers calling `heartbeatLocation`).
+- ✅ **Demo bots + ambient heatmap** (`bot` table + scheduled `botTick` in `spacetimedb/src/index.ts`).
+  Auto-spawns in the `demo` room once a real user has a fix (anchored to that user's location,
+  NYC fallback comes free via the client): 3 "huddler" bots scripted to converge on a ~40s
+  cycle (candidate→active→cooling→ended, reliably) + 6 "wanderer" bots spread ~500m to keep
+  the map alive. Bots write `presence` + reuse `bumpHeat` (the engine clusters them with **no**
+  special-casing); a spawn-time heat burst + per-tick ambient hotspots keep the heatmap rich.
+  Auto-despawns when no real user has been seen within the stale window. Verified on a local
+  server: spawn, movement, full huddle loop with warmth, sustained/spread heat, lifecycle events.
 - ✅ Two-client end-to-end (both share a location → huddle forms/warms/cools): verified via
   CLI + the live browser client (forming → activated → cooling → ended cycles in the feed).
 - ⬜ Purge remaining zone/tap-to-move prose from the spec docs (banners cover it for now);

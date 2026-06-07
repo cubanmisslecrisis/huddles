@@ -506,7 +506,7 @@ export const savePlace = spacetimedb.reducer(
       roomId: p.roomId,
       identity: ctx.sender,
       placeName: trimmedName,
-      note: trimmedNote ? trimmedNote : null,
+      note: trimmedNote ? trimmedNote : undefined,
       lat: p.lat,
       lng: p.lng,
       createdAt: ctx.timestamp,
@@ -1001,10 +1001,13 @@ function spawnBots(ctx: any, roomId: bigint, anchor: { lat: number; lng: number 
     insertBot('huddler', rendezvous, phase);
   }
 
-  // Wanderers: homes scattered around the anchor; each orbits its own home.
+  // Wanderers: homes scattered in an annulus around the anchor (min..max radius) so
+  // they read as separate pods spread across the map, not one blob over the huddlers.
   for (let i = 0; i < BOT_WANDERER_COUNT; i++) {
-    const ang = ctx.random() * 2 * Math.PI;
-    const dist = BOT_AREA_SPREAD_M * Math.sqrt(ctx.random()); // uniform over the disc
+    const ang = ((i + 0.5) / BOT_WANDERER_COUNT) * 2 * Math.PI + ctx.random() * 0.6; // fan out, slight jitter
+    const dist =
+      BOT_WANDERER_MIN_SPREAD_M +
+      (BOT_AREA_SPREAD_M - BOT_WANDERER_MIN_SPREAD_M) * ctx.random();
     const off = metersToLatLng(Math.cos(ang) * dist, Math.sin(ang) * dist, anchor.lat);
     const home = { lat: anchor.lat + off.dLat, lng: anchor.lng + off.dLng };
     insertBot('wanderer', home, ctx.random() * 2 * Math.PI);

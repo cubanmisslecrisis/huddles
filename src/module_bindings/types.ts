@@ -114,6 +114,18 @@ export const Room = __t.object("Room", {
 });
 export type Room = __Infer<typeof Room>;
 
+export const SavedPlace = __t.object("SavedPlace", {
+  id: __t.u64(),
+  roomId: __t.u64(),
+  identity: __t.identity(),
+  placeName: __t.string(),
+  note: __t.option(__t.string()),
+  lat: __t.f64(),
+  lng: __t.f64(),
+  createdAt: __t.timestamp(),
+});
+export type SavedPlace = __Infer<typeof SavedPlace>;
+
 export const Score = __t.object("Score", {
   id: __t.u64(),
   roomId: __t.u64(),
