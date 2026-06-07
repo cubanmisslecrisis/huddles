@@ -148,18 +148,19 @@ export function useMapboxMap({
         'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 0, 0, 4, 0.4, 8, 0.7, 16, 1],
         // Intensity amplifies the kernel density — stronger at closer zoom.
         'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 0.4, 13, 1.0, 15, 1.8, 17, 2.5],
-        // Natural warm color ramp: transparent → amber → orange → red, hot core white.
+        // Classic heatmap: transparent → blue → cyan → green → yellow → orange → red
         'heatmap-color': [
           'interpolate',
           ['linear'],
           ['heatmap-density'],
-          0,   'rgba(0, 0, 0, 0)',
-          0.1, 'rgba(255, 220, 80, 0.35)',
-          0.3, 'rgba(255, 140, 20, 0.6)',
-          0.5, 'rgba(255, 60, 10, 0.75)',
-          0.7, 'rgba(220, 10, 40, 0.85)',
-          0.9, 'rgba(180, 0, 80, 0.92)',
-          1,   'rgba(255, 255, 255, 1)',
+          0,    'rgba(0,0,0,0)',
+          0.15, 'rgba(0,0,255,0.5)',
+          0.3,  'rgba(0,180,255,0.65)',
+          0.45, 'rgba(0,255,160,0.75)',
+          0.6,  'rgba(180,255,0,0.82)',
+          0.75, 'rgba(255,200,0,0.88)',
+          0.88, 'rgba(255,100,0,0.93)',
+          1,    'rgba(255,0,0,1)',
         ],
         // Larger radius = more organic spread; scales up as you zoom in.
         'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 10, 20, 12, 45, 14, 80, 15, 110, 16, 150, 17, 200],
