@@ -38,6 +38,7 @@ import HeartbeatLocationReducer from "./heartbeat_location_reducer";
 import JoinRoomReducer from "./join_room_reducer";
 import LeaveRoomReducer from "./leave_room_reducer";
 import PingNearbyReducer from "./ping_nearby_reducer";
+import SavePlaceReducer from "./save_place_reducer";
 
 // Import all procedure arg schemas
 
@@ -49,6 +50,7 @@ import HuddleRow from "./huddle_table";
 import HuddleMemberRow from "./huddle_member_table";
 import PresenceRow from "./presence_table";
 import RoomRow from "./room_table";
+import SavedPlaceRow from "./saved_place_table";
 import ScoreRow from "./score_table";
 import UserRow from "./user_table";
 
@@ -174,6 +176,20 @@ const tablesSchema = __schema({
       { name: 'score_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, ScoreRow),
+  savedPlace: __table({
+    name: 'saved_place',
+    indexes: [
+      { accessor: 'id', name: 'saved_place_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'by_room', name: 'saved_place_room_id_idx_btree', algorithm: 'btree', columns: [
+        'roomId',
+      ] },
+    ],
+    constraints: [
+      { name: 'saved_place_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, SavedPlaceRow),
   user: __table({
     name: 'user',
     indexes: [
@@ -193,6 +209,7 @@ const reducersSchema = __reducers(
   __reducerSchema("join_room", JoinRoomReducer),
   __reducerSchema("leave_room", LeaveRoomReducer),
   __reducerSchema("ping_nearby", PingNearbyReducer),
+  __reducerSchema("save_place", SavePlaceReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */

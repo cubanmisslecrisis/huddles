@@ -65,7 +65,9 @@ const BOT_RENDEZVOUS_OFFSET_M = 35; // rendezvous is this far from the anchor (r
 const BOT_RENDEZVOUS_HOLD_S = 22; // huddlers cluster (dwell 10s + warmth) → active ...
 const BOT_RENDEZVOUS_GAP_S = 18; // ... then scatter past cooling (10s) → ended, then repeat
 const BOT_SCATTER_RADIUS_M = 220; // how far huddlers flee during the gap (> STAY_RADIUS)
-const BOT_AREA_SPREAD_M = 260; // radius (m) over which wanderer homes are scattered
+const BOT_AREA_SPREAD_M = 500; // radius (m) over which wanderer homes are scattered
+const BOT_WANDERER_MIN_SPREAD_M = 160; // keep wanderer homes off the rendezvous so they
+// read as separate pods around the map rather than merging into one blob with the huddlers
 const BOT_AMBIENT_HOTSPOTS = 8; // fixed cells botTick keeps warm so the heatmap stays rich
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -215,6 +217,25 @@ const score = table(
   }
 );
 
+// User-saved places on the map — location-tagged places with optional notes.
+const savedPlace = table(
+  {
+    name: 'saved_place',
+    public: true,
+    indexes: [{ accessor: 'by_room', algorithm: 'btree', columns: ['roomId'] }],
+  },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    roomId: t.u64(),
+    identity: t.identity(),
+    placeName: t.string(),
+    note: t.option(t.string()),
+    lat: t.f64(),
+    lng: t.f64(),
+    createdAt: t.timestamp(),
+  }
+);
+
 // Scheduled tables (the clock). Each targets a reducer below via a lazy thunk.
 const huddleTickTimer = table(
   { name: 'huddle_tick_timer', scheduled: (): any => huddleTick },
@@ -251,6 +272,7 @@ const spacetimedb = schema({
   huddleMember,
   event,
   score,
+  savedPlace,
   // scheduled
   huddleTickTimer,
   presenceTickTimer,
@@ -465,6 +487,38 @@ export const pingNearby = spacetimedb.reducer((ctx) => {
     lng: p.lng,
   });
 });
+
+// Save a place on the map at the current location.
+export const savePlace = spacetimedb.reducer(
+  { placeName: t.string(), note: t.option(t.string()) },
+  (ctx, { placeName, note }) => {
+    const p = ctx.db.presence.identity.find(ctx.sender);
+    if (!p) throw new SenderError('Join a room first');
+    if (!p.hasFix) throw new SenderError('Waiting for your location…');
+
+    const trimmedName = placeName.trim();
+    if (!trimmedName) throw new SenderError('Place name cannot be empty');
+
+    const trimmedNote = note?.trim();
+
+    ctx.db.savedPlace.insert({
+      id: 0n,
+      roomId: p.roomId,
+      identity: ctx.sender,
+      placeName: trimmedName,
+      note: trimmedNote ? trimmedNote : null,
+      lat: p.lat,
+      lng: p.lng,
+      createdAt: ctx.timestamp,
+    });
+
+    const who = ctx.db.user.identity.find(ctx.sender)?.name ?? 'Someone';
+    emitEvent(ctx, p.roomId, 'place_saved', `${who} saved ${trimmedName}`, {
+      lat: p.lat,
+      lng: p.lng,
+    });
+  }
+);
 
 // ═════════════════════════════════════════════════════════════════════════════
 // PART 2 — engine + scheduled reducers

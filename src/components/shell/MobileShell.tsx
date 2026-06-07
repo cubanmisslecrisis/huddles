@@ -7,6 +7,7 @@ import { BottomSheet, type SheetState } from '@/components/panels/BottomSheet';
 import { MapPanel } from '@/components/lens/MapPanel';
 import { ActivityPanel } from '@/components/lens/ActivityPanel';
 import { FriendsPanel } from '@/components/lens/FriendsPanel';
+import { WrappedPanel } from '@/components/lens/WrappedPanel';
 import { DetailPanel } from '@/components/DetailPanel';
 import { Avatar } from '@/components/Avatar';
 import type { Lens } from '@/lib/nav-tabs';
@@ -89,8 +90,10 @@ export function MobileShell({
     <MapPanel nearestFriend={nearestFriend} huddles={huddles} onSelect={onSelect} onPing={onPing} bare />
   ) : lens === 'activity' ? (
     <ActivityPanel events={events} activeHuddles={activeHuddles} friendsOut={friendsOut} bare />
-  ) : (
+  ) : lens === 'friends' ? (
     <FriendsPanel friends={friends} onSelect={onSelect} onPing={onPing} bare />
+  ) : (
+    <WrappedPanel friends={friends} bare />
   );
 
   return (
