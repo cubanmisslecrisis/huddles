@@ -1,5 +1,6 @@
 import { LogOut } from 'lucide-react';
 import type { MeVM } from '@/lib/view';
+import { ME_PHOTO } from '@/lib/avatar';
 import { Avatar } from '@/components/Avatar';
 import { Button } from '@/components/ui/button';
 import { FlowSheet } from '@/components/flows/FlowSheet';
@@ -22,7 +23,7 @@ export function ProfileSettings({
       onOpenChange={onOpenChange}
       title={
         <span className="flex items-center gap-3">
-          <Avatar name={me.name} colorKey={me.key} size={44} className="ring-2 ring-yellow ring-offset-2 ring-offset-card" />
+          <Avatar name={me.name} colorKey={me.key} photo={ME_PHOTO} size={44} className="ring-2 ring-yellow ring-offset-2 ring-offset-card" />
           <span className="truncate">{me.name}</span>
         </span>
       }

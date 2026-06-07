@@ -10,6 +10,7 @@ import { FriendsPanel } from '@/components/lens/FriendsPanel';
 import { WrappedPanel } from '@/components/lens/WrappedPanel';
 import { DetailPanel } from '@/components/DetailPanel';
 import { Avatar } from '@/components/Avatar';
+import { ME_PHOTO } from '@/lib/avatar';
 import { Search, Plus } from 'lucide-react';
 import type { Lens } from '@/lib/nav-tabs';
 import type { LayerKey, FilterKey } from '@/lib/places-data';
@@ -124,7 +125,7 @@ export function MobileShell({
         </div>
         <div className="pointer-events-auto flex shrink-0 flex-col items-end gap-2.5">
           <button onClick={onOpenProfile} aria-label="Your profile" className="rounded-full">
-            <Avatar name={me.name} colorKey={me.key} size={44} className="ring-2 ring-yellow ring-offset-2 ring-offset-background" />
+            <Avatar name={me.name} colorKey={me.key} photo={ME_PHOTO} size={44} className="ring-2 ring-yellow ring-offset-2 ring-offset-background" />
           </button>
           <button
             onClick={onSearch}

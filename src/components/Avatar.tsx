@@ -1,12 +1,16 @@
-import { colorFor, initialOf } from '@/lib/avatar';
+import { useState } from 'react';
+import { colorFor, initialOf, photoFor } from '@/lib/avatar';
 import { cn } from '@/lib/utils';
 
-// The one stand-in for every avatar/photo in the design: a hashed-color disc with
-// the person's initial. `colorKey` keeps a user's color stable (use their identity
-// hex); `dot` adds a presence indicator; `selected` adds a focus ring.
+// The one stand-in for every avatar in the design. Renders a deterministic demo photo
+// (from `photoFor`, pool in public/avatars) clipped to a disc with a white ring; the
+// hashed-color disc shows through as the fallback if the photo is missing/fails to load,
+// and the hashed color also tints the selected ring. `colorKey` keeps a user's photo+color
+// stable (use their identity hex); pass `photo` to override (e.g. a fixed "me" avatar).
 export function Avatar({
   name,
   colorKey,
+  photo,
   size = 44,
   dot,
   selected = false,
@@ -15,13 +19,17 @@ export function Avatar({
 }: {
   name: string;
   colorKey?: string;
+  photo?: string;
   size?: number;
   dot?: 'online' | 'stale' | null;
   selected?: boolean;
   ring?: string;
   className?: string;
 }) {
-  const bg = colorFor(colorKey ?? name);
+  const key = colorKey ?? name;
+  const bg = colorFor(key);
+  const src = photo ?? photoFor(key);
+  const [broken, setBroken] = useState(false);
   return (
     <span
       className={cn(
@@ -38,10 +46,19 @@ export function Avatar({
           : '0 4px 12px rgba(20,20,20,0.18)',
       }}
     >
-      {initialOf(name)}
+      {!broken && src ? (
+        <img
+          src={src}
+          alt=""
+          className="absolute inset-0 h-full w-full rounded-full object-cover"
+          onError={() => setBroken(true)}
+        />
+      ) : (
+        initialOf(name)
+      )}
       {dot && (
         <span
-          className="absolute bottom-0 right-0 rounded-full border-2 border-card"
+          className="absolute bottom-0 right-0 z-10 rounded-full border-2 border-card"
           style={{
             width: Math.max(8, size * 0.28),
             height: Math.max(8, size * 0.28),

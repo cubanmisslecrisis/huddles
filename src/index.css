@@ -145,6 +145,65 @@
   }
 }
 
+@layer utilities {
+  .shadow-clay {
+    --clay-base: var(--clay-color, var(--color-border));
+    --clay-highlight: rgba(255, 255, 255, 0.45);
+    --clay-drop: color-mix(in srgb, var(--clay-base) 40%, transparent);
+    --clay-shadow-color: color-mix(in srgb, var(--clay-base) 80%, black);
+    --clay-shadow: color-mix(in srgb, var(--clay-shadow-color) 75%, transparent);
+
+    box-shadow:
+      0 6px 12px -2px var(--clay-drop),
+      inset 4px 4px 8px var(--clay-highlight),
+      inset -4px -4px 8px var(--clay-shadow);
+  }
+  .huddle-dropdown-trigger:active,
+  .huddle-dropdown-trigger[data-popup-open] {
+    box-shadow:
+      0 0px 0px 0px transparent,
+      inset 0 0 8px 3px rgba(0, 0, 0, 0.12),
+      inset 0px 0px 0px transparent;
+  }
+
+  .huddle-search-container:active:not(:has(button:hover)),
+  .huddle-search-container:has(input:focus) {
+    box-shadow:
+      0 0px 0px 0px transparent,
+      inset 0 0 8px 3px rgba(0, 0, 0, 0.12),
+      inset 0px 0px 0px transparent;
+  }
+
+  .dark .shadow-clay {
+    --clay-base: var(--clay-color, var(--color-border));
+    --clay-highlight: rgba(255, 255, 255, 0.15);
+    --clay-drop: color-mix(in srgb, var(--clay-base) 40%, transparent);
+    --clay-shadow-color: color-mix(in srgb, var(--clay-base) 50%, black);
+    --clay-shadow: color-mix(in srgb, var(--clay-shadow-color) 80%, transparent);
+
+    box-shadow:
+      0 6px 12px -2px var(--clay-drop),
+      inset 4px 4px 8px var(--clay-highlight),
+      inset -4px -4px 8px var(--clay-shadow);
+  }
+
+  .dark .huddle-dropdown-trigger:active,
+  .dark .huddle-dropdown-trigger[data-popup-open] {
+    box-shadow:
+      0 0px 0px 0px transparent,
+      inset 0 0 8px 3px rgba(0, 0, 0, 0.5),
+      inset 0px 0px 0px transparent;
+  }
+
+  .dark .huddle-search-container:active:not(:has(button:hover)),
+  .dark .huddle-search-container:has(input:focus) {
+    box-shadow:
+      0 0px 0px 0px transparent,
+      inset 0 0 8px 3px rgba(0, 0, 0, 0.5),
+      inset 0px 0px 0px transparent;
+  }
+}
+
 /* Full-bleed mobile map: hide the default Mapbox control chrome. */
 .mapboxgl-ctrl-bottom-left,
 .mapboxgl-ctrl-bottom-right {
