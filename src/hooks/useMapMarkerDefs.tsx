@@ -1,11 +1,9 @@
 import { useMemo } from 'react';
-import { staticPins, type LayerKey } from '@/lib/places-data';
+import { type LayerKey } from '@/lib/places-data';
 import {
   FriendMarker,
   HuddleMarker,
-  PinMarker,
   type MapAvatar,
-  type ResolvedPin,
   type Selection,
 } from '@/components/map/markers';
 
@@ -20,19 +18,18 @@ export type MapMarkerDef = {
 };
 
 // Builds the live marker set: one node per solo avatar (FriendMarker) / merged huddle
-// (HuddleMarker), plus static place pins resolved against the user's location.
+// (HuddleMarker). Place pins are real Google places drawn separately as emoji markers
+// (see place-markers.tsx) — no static pins here.
 export function useMapMarkerDefs({
   avatars,
   selection,
   onSelect,
   activeLayers,
-  origin,
 }: {
   avatars: MapAvatar[];
   selection: Selection;
   onSelect: (s: Selection) => void;
   activeLayers: Record<LayerKey, boolean>;
-  origin: { lat: number; lng: number } | null;
 }): MapMarkerDef[] {
   return useMemo(() => {
     const hasSelection = selection !== null;
@@ -68,38 +65,6 @@ export function useMapMarkerDefs({
       });
     }
 
-    // Static place pins — only meaningful once we know where the user is.
-    if (origin) {
-      for (const p of staticPins) {
-        let visible = false;
-
-        // Show recs and saved places when those layers are active
-        if ((p.kind === 'reco' || p.kind === 'music' || p.kind === 'content') && activeLayers.recs) {
-          visible = true;
-        }
-        if ((p.kind === 'saved') && activeLayers.saved) {
-          visible = true;
-        }
-
-        if (!visible) continue;
-        const resolved: ResolvedPin = { ...p, lat: origin.lat + p.dLat, lng: origin.lng + p.dLng };
-        defs.push({
-          key: `pin-${p.id}`,
-          lng: resolved.lng,
-          lat: resolved.lat,
-          anchor: 'bottom',
-          node: (
-            <PinMarker
-              pin={resolved}
-              selected={isSel('pin', p.id)}
-              dimmed={hasSelection && !isSel('pin', p.id)}
-              onSelect={() => onSelect({ kind: 'pin', id: p.id })}
-            />
-          ),
-        });
-      }
-    }
-
     return defs;
-  }, [avatars, selection, onSelect, activeLayers, origin]);
+  }, [avatars, selection, onSelect, activeLayers]);
 }

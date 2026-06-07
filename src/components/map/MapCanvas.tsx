@@ -45,7 +45,7 @@ export function MapCanvas({
   const displaySelectedPlace = externalSelectedPlace ?? selectedPlace;
   const handleSelectPlace = externalOnSelectPlace ?? setSelectedPlace;
 
-  const markerDefs = useMapMarkerDefs({ avatars, selection, onSelect, activeLayers, origin: myLoc });
+  const markerDefs = useMapMarkerDefs({ avatars, selection, onSelect, activeLayers });
   const { mapContainerRef, tokenMissing, markerPortals, recenter, flyTo, mapRef } = useMapboxMap({
     markerDefs,
     heat,
@@ -66,7 +66,7 @@ export function MapCanvas({
       const foundPlaces = await searchNearbyPlaces(
         myLoc.lat,
         myLoc.lng,
-        2000,
+        805, // half-mile radius → 1-mile diameter
         ['restaurant', 'cafe']
       );
       setPlaces(foundPlaces);

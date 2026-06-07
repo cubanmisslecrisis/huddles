@@ -10,6 +10,24 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
+export const Bot = __t.object("Bot", {
+  identity: __t.identity(),
+  roomId: __t.u64(),
+  name: __t.string(),
+  kind: __t.string(),
+  homeLat: __t.f64(),
+  homeLng: __t.f64(),
+  paramA: __t.f64(),
+  spawnedAt: __t.timestamp(),
+});
+export type Bot = __Infer<typeof Bot>;
+
+export const BotTickTimer = __t.object("BotTickTimer", {
+  scheduledId: __t.u64(),
+  scheduledAt: __t.scheduleAt(),
+});
+export type BotTickTimer = __Infer<typeof BotTickTimer>;
+
 export const DecayTickTimer = __t.object("DecayTickTimer", {
   scheduledId: __t.u64(),
   scheduledAt: __t.scheduleAt(),

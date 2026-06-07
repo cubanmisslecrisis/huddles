@@ -42,6 +42,7 @@ import PingNearbyReducer from "./ping_nearby_reducer";
 // Import all procedure arg schemas
 
 // Import all table schema definitions
+import BotRow from "./bot_table";
 import EventRow from "./event_table";
 import HeatCellRow from "./heat_cell_table";
 import HuddleRow from "./huddle_table";
@@ -55,6 +56,20 @@ import UserRow from "./user_table";
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
+  bot: __table({
+    name: 'bot',
+    indexes: [
+      { accessor: 'identity', name: 'bot_identity_idx_btree', algorithm: 'btree', columns: [
+        'identity',
+      ] },
+      { accessor: 'roomId', name: 'bot_room_id_idx_btree', algorithm: 'btree', columns: [
+        'roomId',
+      ] },
+    ],
+    constraints: [
+      { name: 'bot_identity_key', constraint: 'unique', columns: ['identity'] },
+    ],
+  }, BotRow),
   event: __table({
     name: 'event',
     indexes: [

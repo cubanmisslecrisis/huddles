@@ -50,7 +50,8 @@ export function GoogleMapsStyle({
     const loadPlaces = async () => {
       setIsLoading(true);
       const allTypes = CATEGORIES.flatMap((c) => c.types);
-      const foundPlaces = await searchNearbyPlaces(myLoc.lat, myLoc.lng, 966, allTypes);
+      // 805 m radius ≈ a 1-mile diameter around the user.
+      const foundPlaces = await searchNearbyPlaces(myLoc.lat, myLoc.lng, 805, allTypes);
       console.log('All found places:', foundPlaces.map(p => p.name));
       setPlaces(foundPlaces);
       setIsLoading(false);
