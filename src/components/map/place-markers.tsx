@@ -26,13 +26,16 @@ export function PlaceMarkers({
   places,
   selectedPlace,
   onSelectPlace,
+  friends = [],
 }: {
   map: mapboxgl.Map | null;
   places: Place[];
   selectedPlace: Place | null;
   onSelectPlace: (place: Place | null) => void;
+  friends?: Array<{ key: string; name: string; distanceMeters?: number }>;
 }) {
   const markersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
 
   useEffect(() => {
     if (!map) return;
@@ -67,6 +70,37 @@ export function PlaceMarkers({
         el.addEventListener('click', (e) => {
           e.stopPropagation();
           onSelectPlace(isSelected ? null : place);
+
+          // Show popup with place details
+          if (popupRef.current) {
+            popupRef.current.remove();
+          }
+
+          const friendsNearby = friends.slice(0, 5); // Show first 5 friends
+          const friendsHtml = friendsNearby.length > 0
+            ? `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee;">
+                 <div style="font-size: 11px; color: #666; margin-bottom: 6px; font-weight: 600;">Friends here:</div>
+                 <div style="display: flex; flex-direction: column; gap: 4px;">
+                   ${friendsNearby.map(f => `<div style="font-size: 11px; color: #333;">✓ ${f.name}</div>`).join('')}
+                 </div>
+               </div>`
+            : `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee;">
+                 <div style="font-size: 11px; color: #999;">No friends here yet</div>
+               </div>`;
+
+          const popup = new mapboxgl.Popup({ offset: 25, maxWidth: 200 })
+            .setLngLat([place.lng, place.lat])
+            .setHTML(`
+              <div style="padding: 4px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+                <div style="font-weight: 600; font-size: 13px; color: #333; margin-bottom: 4px;">${place.name}</div>
+                <div style="font-size: 11px; color: #666; margin-bottom: 4px;">${place.address || ''}</div>
+                ${place.rating ? `<div style="font-size: 11px; color: #f59e0b; margin-bottom: 4px;">⭐ ${place.rating.toFixed(1)}${place.userRatings ? ` (${place.userRatings} reviews)` : ''}</div>` : ''}
+                ${friendsHtml}
+              </div>
+            `)
+            .addTo(map);
+
+          popupRef.current = popup;
         });
 
         const marker = new mapboxgl.Marker({ element: el })

@@ -108,6 +108,7 @@ export function MobileShell({
         onSelect={onSelect}
         activeLayers={activeLayers}
         controlsRef={controlsRef}
+        friends={friends}
       />
 
       {/* Top layer: status chips + profile avatar */}

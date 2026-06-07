@@ -33,6 +33,7 @@ export function MapCanvas({
   places?: Place[];
   selectedPlace?: Place | null;
   onSelectPlace?: (place: Place | null) => void;
+  friends?: Array<{ key: string; name: string; distanceMeters?: number }>;
 }) {
   const [places, setPlaces] = useState<Place[]>([]);
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
@@ -83,6 +84,7 @@ export function MapCanvas({
         places={displayPlaces}
         selectedPlace={displaySelectedPlace}
         onSelectPlace={handleSelectPlace}
+        friends={friends}
       />
       {!externalPlaces && (
         <>
@@ -90,6 +92,7 @@ export function MapCanvas({
             places={displayPlaces}
             selectedPlace={displaySelectedPlace}
             onSelectPlace={handleSelectPlace}
+        friends={friends}
             isLoading={isLoadingPlaces}
           />
           <PlacesSearch

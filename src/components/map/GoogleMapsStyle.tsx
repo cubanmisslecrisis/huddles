@@ -25,6 +25,7 @@ export function GoogleMapsStyle({
   onSelect,
   activeLayers,
   controlsRef,
+  friends = [],
 }: {
   avatars: MapAvatar[];
   heat: HeatPoint[];
@@ -33,6 +34,7 @@ export function GoogleMapsStyle({
   onSelect: (s: Selection) => void;
   activeLayers: Record<LayerKey, boolean>;
   controlsRef?: React.MutableRefObject<MapControls | null>;
+  friends?: Array<{ key: string; name: string; distanceMeters?: number }>;
 }) {
   const [places, setPlaces] = useState<Place[]>([]);
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
@@ -186,6 +188,7 @@ export function GoogleMapsStyle({
           onSelect={onSelect}
           activeLayers={activeLayers}
           controlsRef={controlsRef}
+        friends={friends}
           places={filteredPlaces}
           selectedPlace={selectedPlace}
           onSelectPlace={setSelectedPlace}
