@@ -141,7 +141,7 @@ export function useMapboxMap({
           slot: 'top',
           paint: {
             'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 0, 0, 0.5, 0.3, 1, 0.8, 2, 1],
-            'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 13, 2.2, 15, 3.0, 17, 4.0],
+            'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 12, 1.2, 14, 2.0, 16, 3.0, 17, 4.0],
             'heatmap-color': [
               'interpolate',
               ['linear'],
@@ -167,7 +167,7 @@ export function useMapboxMap({
               1,
               'rgba(0, 255, 150, 1)',
             ],
-            'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 11, 60, 13, 100, 15, 140, 17, 180],
+            'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 10, 15, 12, 35, 14, 65, 15, 90, 16, 120, 17, 160],
             'heatmap-opacity': warmthEnabled ? heatmapPulse : 0,
           },
         });
