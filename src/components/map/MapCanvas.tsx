@@ -19,6 +19,9 @@ export function MapCanvas({
   onSelect,
   activeLayers,
   controlsRef,
+  places: externalPlaces,
+  selectedPlace: externalSelectedPlace,
+  onSelectPlace: externalOnSelectPlace,
 }: {
   avatars: MapAvatar[];
   heat: HeatPoint[];
@@ -27,10 +30,18 @@ export function MapCanvas({
   onSelect: (s: Selection) => void;
   activeLayers: Record<LayerKey, boolean>;
   controlsRef?: React.MutableRefObject<MapControls | null>;
+  places?: Place[];
+  selectedPlace?: Place | null;
+  onSelectPlace?: (place: Place | null) => void;
 }) {
   const [places, setPlaces] = useState<Place[]>([]);
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
   const [isLoadingPlaces, setIsLoadingPlaces] = useState(false);
+
+  // Use external places/selection if provided, otherwise use internal state
+  const displayPlaces = externalPlaces ?? places;
+  const displaySelectedPlace = externalSelectedPlace ?? selectedPlace;
+  const handleSelectPlace = externalOnSelectPlace ?? setSelectedPlace;
 
   const markerDefs = useMapMarkerDefs({ avatars, selection, onSelect, activeLayers, origin: myLoc });
   const { mapContainerRef, tokenMissing, markerPortals, recenter, flyTo, mapRef } = useMapboxMap({
@@ -69,22 +80,26 @@ export function MapCanvas({
       {markerPortals}
       <PlaceMarkers
         map={mapRef.current}
-        places={places}
-        selectedPlace={selectedPlace}
-        onSelectPlace={setSelectedPlace}
+        places={displayPlaces}
+        selectedPlace={displaySelectedPlace}
+        onSelectPlace={handleSelectPlace}
       />
-      <PlacesPanel
-        places={places}
-        selectedPlace={selectedPlace}
-        onSelectPlace={setSelectedPlace}
-        isLoading={isLoadingPlaces}
-      />
-      <PlacesSearch
-        userLat={myLoc?.lat || null}
-        userLng={myLoc?.lng || null}
-        onPlacesFound={setPlaces}
-        onLoadingChange={setIsLoadingPlaces}
-      />
+      {!externalPlaces && (
+        <>
+          <PlacesPanel
+            places={displayPlaces}
+            selectedPlace={displaySelectedPlace}
+            onSelectPlace={handleSelectPlace}
+            isLoading={isLoadingPlaces}
+          />
+          <PlacesSearch
+            userLat={myLoc?.lat || null}
+            userLng={myLoc?.lng || null}
+            onPlacesFound={setPlaces}
+            onLoadingChange={setIsLoadingPlaces}
+          />
+        </>
+      )}
       {tokenMissing && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-secondary p-6 text-center">
           <p className="max-w-sm text-sm font-semibold text-foreground">

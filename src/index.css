@@ -184,47 +184,43 @@
   }
 }
 
-/* Place Markers */
-.place-marker {
+/* Google Maps Style Markers */
+.google-maps-marker {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
   cursor: pointer;
+  width: 40px;
+  height: 40px;
 }
 
-.place-marker-icon {
-  width: 32px;
-  height: 32px;
+.google-maps-marker-pin {
+  width: 40px;
+  height: 40px;
+  background: #ea4335;
+  border: 3px solid white;
+  border-radius: 50% 50% 50% 0;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  transform: rotate(-45deg);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #ff6b35 0%, #ff8c42 100%);
-  border-radius: 50%;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 0 3px rgba(255, 107, 53, 0.2);
-  border: 2px solid white;
   transition: all 0.2s ease;
+  position: relative;
 }
 
-.place-marker-dot {
-  width: 8px;
-  height: 8px;
-  background: white;
-  border-radius: 50%;
+.google-maps-marker-pin.selected {
+  width: 48px;
+  height: 48px;
+  box-shadow: 0 4px 16px rgba(234, 67, 53, 0.5), 0 2px 8px rgba(0, 0, 0, 0.4);
+  background: #d33427;
 }
 
-.place-marker.selected .place-marker-icon {
-  width: 40px;
-  height: 40px;
-  background: linear-gradient(135deg, #ff4500 0%, #ff6347 100%);
-  box-shadow: 0 0 0 8px rgba(255, 69, 0, 0.2), 0 4px 16px rgba(0, 0, 0, 0.4);
-  animation: place-marker-pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes place-marker-pulse {
-  0%, 100% {
-    box-shadow: 0 0 0 8px rgba(255, 69, 0, 0.2), 0 4px 16px rgba(0, 0, 0, 0.4);
-  }
-  50% {
-    box-shadow: 0 0 0 12px rgba(255, 69, 0, 0.1), 0 4px 16px rgba(0, 0, 0, 0.4);
-  }
+.google-maps-marker-number {
+  transform: rotate(45deg);
+  color: white;
+  font-weight: bold;
+  font-size: 16px;
+  line-height: 1;
+  text-align: center;
 }

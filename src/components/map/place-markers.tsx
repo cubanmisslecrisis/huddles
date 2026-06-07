@@ -28,29 +28,28 @@ export function PlaceMarkers({
     });
 
     // Add or update markers for current places
-    places.forEach((place) => {
+    places.forEach((place, index) => {
+      const markerNumber = index + 1;
       if (markersRef.current.has(place.placeId)) {
         const marker = markersRef.current.get(place.placeId)!;
         marker.setLngLat([place.lng, place.lat]);
       } else {
         const el = document.createElement('div');
-        el.className = 'place-marker';
-        el.innerHTML = `
-          <div class="place-marker-icon">
-            <div class="place-marker-dot"></div>
-          </div>
-        `;
+        el.className = 'google-maps-marker';
 
         const isSelected = selectedPlace?.placeId === place.placeId;
-        if (isSelected) {
-          el.classList.add('selected');
-        }
+
+        el.innerHTML = `
+          <div class="google-maps-marker-pin ${isSelected ? 'selected' : ''}">
+            <div class="google-maps-marker-number">${markerNumber}</div>
+          </div>
+        `;
 
         el.addEventListener('click', () => {
           onSelectPlace(isSelected ? null : place);
         });
 
-        const marker = new mapboxgl.Marker({ element: el })
+        const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
           .setLngLat([place.lng, place.lat])
           .addTo(map);
 

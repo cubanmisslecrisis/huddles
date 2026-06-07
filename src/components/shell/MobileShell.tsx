@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { MapCanvas, type MapControls } from '@/components/map/MapCanvas';
+import { type MapControls } from '@/components/map/MapCanvas';
+import { GoogleMapsStyle } from '@/components/map/GoogleMapsStyle';
 import { MapStatusChips, MapFilterChips } from '@/components/map/MapChips';
 import { BottomNavIsland } from '@/components/shell/BottomNavIsland';
 import { BottomSheet, type SheetState } from '@/components/panels/BottomSheet';
@@ -99,7 +100,7 @@ export function MobileShell({
 
   return (
     <div className="relative h-dvh w-full overflow-hidden bg-background">
-      <MapCanvas
+      <GoogleMapsStyle
         avatars={avatars}
         heat={heat}
         myLoc={myLoc}
