@@ -3,7 +3,21 @@
 import { Bookmark } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PingIcon } from "@/components/ping-icon"
+import type { FriendPresence } from "@/lib/huddles-data"
 import { typeButtonBold } from "@/lib/ui-styles"
+
+export function friendNearbySubtitle(friend: FriendPresence): string | undefined {
+  if (friend.placeName) {
+    const dist = friend.distanceLabel?.split(" · ")[0]
+    return dist ? `At ${friend.placeName} · ${dist}` : `At ${friend.placeName}`
+  }
+  return friend.distanceLabel
+}
+
+export function friendDetailLocationLine(friend: FriendPresence): string {
+  const head = friend.placeName ? `At ${friend.placeName}` : friend.lastSeenLabel
+  return friend.distanceLabel ? `${head} · ${friend.distanceLabel}` : head
+}
 
 export const panelShellClass = (bare: boolean) => (bare ? "flex flex-col" : "flex h-full flex-col")
 export const panelRowActionShellClass = "shrink-0 pr-1.5"

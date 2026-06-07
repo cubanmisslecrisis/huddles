@@ -15,6 +15,7 @@ import {
   isPlaceKind,
   type EntityData,
 } from "@/lib/entity-lookup"
+import { friendDetailLocationLine } from "@/components/lens/panel-shared"
 import { PanelCard } from "@/components/panel-ui"
 import { Button } from "@/components/ui/button"
 import {
@@ -391,9 +392,7 @@ export function DetailPanel({
             <img src={f.avatar || "/placeholder.svg"} alt="" className="h-14 w-14 rounded-full object-cover" />
             <div>
               <p className={typeEntityName}>{f.name}</p>
-              <p className="text-sm text-muted-foreground">
-                {f.placeName ? `At ${f.placeName}` : f.lastSeenLabel} · {f.distanceLabel}
-              </p>
+              <p className="text-sm text-muted-foreground">{friendDetailLocationLine(f)}</p>
             </div>
           </div>
         }

@@ -16,7 +16,12 @@ import {
 } from "@/components/panel-ui"
 import { SelectableCard } from "@/components/selectable-card"
 import type { Selection } from "@/lib/selection"
-import { panelRowActionShellClass, panelShellClass, PanelRowAction } from "@/components/lens/panel-shared"
+import {
+  friendNearbySubtitle,
+  panelRowActionShellClass,
+  panelShellClass,
+  PanelRowAction,
+} from "@/components/lens/panel-shared"
 
 export function MapPanel({
   onSelect,
@@ -50,11 +55,7 @@ export function MapPanel({
               <img src={nearbyFriend.avatar || "/placeholder.svg"} alt="" className={lensPanelAvatarClass} />
               <div className="min-w-0 flex-1">
                 <p className={lensPanelTitleClass}>{nearbyFriend.name} is nearby</p>
-                <p className={lensPanelSubtitleClass}>
-                  {nearbyFriend.placeName
-                    ? `At ${nearbyFriend.placeName} · ${nearbyFriend.distanceLabel?.split(" · ")[0] ?? ""}`
-                    : nearbyFriend.distanceLabel}
-                </p>
+                <p className={lensPanelSubtitleClass}>{friendNearbySubtitle(nearbyFriend)}</p>
               </div>
             </SelectableCard>
             <div className={panelRowActionShellClass} onClick={(e) => e.stopPropagation()}>
