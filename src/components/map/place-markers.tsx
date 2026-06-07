@@ -32,7 +32,7 @@ export function PlaceMarkers({
   places: Place[];
   selectedPlace: Place | null;
   onSelectPlace: (place: Place | null) => void;
-  friends?: Array<{ key: string; name: string; distanceMeters?: number }>;
+  friends?: Array<{ key: string; name: string; distanceMeters?: number | null }>;
 }) {
   const markersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const popupRef = useRef<mapboxgl.Popup | null>(null);
@@ -88,7 +88,7 @@ export function PlaceMarkers({
                  <div style="font-size: 11px; color: #999;">No friends here yet</div>
                </div>`;
 
-          const popup = new mapboxgl.Popup({ offset: 25, maxWidth: 200 })
+          const popup = new mapboxgl.Popup({ maxWidth: 200 } as any)
             .setLngLat([place.lng, place.lat])
             .setHTML(`
               <div style="padding: 4px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">

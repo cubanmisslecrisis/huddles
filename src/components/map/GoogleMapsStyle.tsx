@@ -34,7 +34,7 @@ export function GoogleMapsStyle({
   onSelect: (s: Selection) => void;
   activeLayers: Record<LayerKey, boolean>;
   controlsRef?: React.MutableRefObject<MapControls | null>;
-  friends?: Array<{ key: string; name: string; distanceMeters?: number }>;
+  friends?: Array<{ key: string; name: string; distanceMeters?: number | null }>;
 }) {
   const [places, setPlaces] = useState<Place[]>([]);
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
@@ -50,7 +50,8 @@ export function GoogleMapsStyle({
     const loadPlaces = async () => {
       setIsLoading(true);
       const allTypes = CATEGORIES.flatMap((c) => c.types);
-      const foundPlaces = await searchNearbyPlaces(myLoc.lat, myLoc.lng, 2000, allTypes);
+      const foundPlaces = await searchNearbyPlaces(myLoc.lat, myLoc.lng, 966, allTypes);
+      console.log('All found places:', foundPlaces.map(p => p.name));
       setPlaces(foundPlaces);
       setIsLoading(false);
     };
@@ -59,6 +60,10 @@ export function GoogleMapsStyle({
   }, [myLoc]);
 
   const filteredPlaces = places
+    .filter((place) => {
+      const name = place.name.toLowerCase();
+      return !name.startsWith('reco') && name !== '% arvo café' && name !== '% arvo cafe' && !name.includes('saved places');
+    })
     .filter((place) => {
       if (activeCategory !== 'all') {
         const category = CATEGORIES.find((c) => c.id === activeCategory);
