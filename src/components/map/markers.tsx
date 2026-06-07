@@ -20,7 +20,7 @@ export type MapAvatar = {
   selection: { kind: 'friend' | 'huddle'; id: string };
 };
 
-export type HeatPoint = { lat: number; lng: number; weight: number };
+export type HeatPoint = { lat: number; lng: number; weight: number; lastUpdatedMs: number };
 
 // A static place pin with coordinates already resolved against the user's location.
 export type ResolvedPin = StaticPin & { lat: number; lng: number };

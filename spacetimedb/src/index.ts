@@ -35,12 +35,13 @@ const POINTS_PER_TICK = 5;
 const DECAY_INTERVAL_SECONDS = 10;
 const DECAY_AMOUNT = 1; // huddle warmth removed per decay tick (now 10s)
 
-// Phase-2 activity heatmap: server-aggregated weight per ~grid cell. Heat is generated
-// ONLY by the huddle engine (at a huddle's centroid, scaled by member count) — never by a
-// lone heartbeat or a solo bot. It accumulates while a huddle is active and SLOW-FADES over
-// minutes once a spot goes quiet, so the map reflects where people actually hung out.
-const HEAT_CELL_DEGREES = 0.002; // ~200 m grid cell (lat) for the heatmap
-const HEAT_PER_HUDDLE_TICK = 0.6; // weight added per active-huddle member per huddleTick (1s)
+// Phase-2 activity heatmap: server-aggregated weight per ~grid cell. Heat is generated ONLY
+// by ACTIVE huddles — each member deposits weight at THEIR OWN position every tick — so a
+// moving huddle lays a TRAIL and a standing one builds a hot hub. A lone heartbeat or solo
+// bot makes no heat. Cells SLOW-FADE over minutes (decay), so trails linger and fade behind
+// the group (recently-painted cells are hot, older trailing cells dimmer → a comet wake).
+const HEAT_CELL_DEGREES = 0.0008; // ~90 m grid cell (lat) — fine enough for smooth trails
+const HEAT_PER_HUDDLE_TICK = 0.6; // weight added per active-huddle MEMBER per huddleTick (1s)
 const HEAT_DECAY_FACTOR = 0.97; // slow multiplicative fade per decay tick (10s) → ~4 min half-life
 const HEAT_MIN = 0.8; // drop fully-cold cells below this so the table stays small
 const HEAT_MAX = 40; // clamp per cell; also the client's "fully hot" reference (see useMapboxMap)
@@ -56,12 +57,11 @@ const DECAY_TICK_MICROS = 10_000_000n; // 10s — cool huddle warmth + heatmap
 // with no engine changes. Bots do NOT write heat directly — heat comes only from the huddles
 // they form. Auto-spawn on the first real user's fix; auto-despawn when no real users remain.
 //
-// Three kinds: `huddler` (converge near the user on a cycle → live huddle loop), `wanderer`
-// (spread out and orbit solo → movement only, no heat), `resident` (sit together in fixed
-// groups elsewhere → permanent huddles → persistent hotspots).
+// Three kinds: `roamer` (a group that walks a slow loop TOGETHER while staying clustered → a
+// moving huddle that lays a heat TRAIL), `wanderer` (spread out, orbit solo → movement only,
+// no heat), `resident` (sit together at a fixed spot → a standing huddle = persistent hot hub).
 const DEMO_ROOM_CODE = 'demo';
 const BOT_TICK_MICROS = 1_500_000n; // ~1.5s movement cadence (well inside STALE window)
-const BOT_HUDDLER_COUNT = 3; // bots that converge to guarantee a huddle forms near the user
 const BOT_WANDERER_COUNT = 6; // solo ambient movers spread across the area (no heat)
 const BOT_NAMES = [
   'Maya', 'Jake', 'Sophie', 'Leo', 'Aria', 'Noah', 'Zoe', 'Kai',
@@ -69,21 +69,24 @@ const BOT_NAMES = [
 ];
 const BOT_ORBIT_RADIUS_M = 60; // wanderer drift radius around their home
 const BOT_ORBIT_SPEED = 0.25; // wanderer angular speed (radians / second)
-const BOT_RENDEZVOUS_RADIUS_M = 30; // huddlers sit this close to the shared rendezvous
-const BOT_RENDEZVOUS_OFFSET_M = 35; // rendezvous is this far from the anchor (real user)
-const BOT_RENDEZVOUS_HOLD_S = 22; // huddlers cluster (dwell 10s + warmth) → active ...
-const BOT_RENDEZVOUS_GAP_S = 18; // ... then scatter past cooling (10s) → ended, then repeat
-const BOT_SCATTER_RADIUS_M = 220; // how far huddlers flee during the gap (> STAY_RADIUS)
 const BOT_AREA_SPREAD_M = 1000; // outer radius (m) over which wanderer homes are scattered
-const BOT_WANDERER_MIN_SPREAD_M = 300; // keep wanderer homes well off the rendezvous so they
-// read as separate pods around the map rather than merging into one blob with the huddlers
+const BOT_WANDERER_MIN_SPREAD_M = 300; // keep wanderer homes well off the user/roam area
 
-// Static "resident" groups: clusters that sit together permanently elsewhere on the map, each
-// forming a standing huddle (→ a persistent heat hub). Members sit within proximity of a fixed
-// group center so the huddle never breaks.
-const BOT_STATIC_GROUP_COUNT = 2; // how many standing groups to place away from the user
+// Roaming groups: each walks a slow shared loop while clustered → a moving huddle that leaves
+// a heat trail. All members share the loop origin (homeLat/Lng); the group center circles it
+// and members orbit the moving center within BOT_ROAM_CLUSTER_M so the huddle never breaks.
+const BOT_ROAM_GROUP_COUNT = 2; // how many roaming groups (trail sources)
+const BOT_ROAM_GROUP_SIZE = 3; // bots per group (≥ MIN_USERS_FOR_HUDDLE)
+const BOT_ROAM_RADIUS_M = 400; // loop radius around the group's origin
+const BOT_ROAM_SPEED = 8; // group travel speed along the loop (m/s) — sets trail length
+const BOT_ROAM_CLUSTER_M = 25; // member orbit around the moving center (< PROXIMITY_RADIUS)
+const BOT_ROAM_ORIGIN_DISTS_M = [250, 700]; // each group's loop-origin distance from the anchor
+
+// Static "resident" group: a cluster that sits together at a fixed spot → a standing huddle
+// (a persistent hot hub). Members sit within proximity of a fixed center so it never breaks.
+const BOT_STATIC_GROUP_COUNT = 1; // standing group(s) placed away from the user
 const BOT_STATIC_GROUP_SIZE = 3; // bots per group (≥ MIN_USERS_FOR_HUDDLE)
-const BOT_STATIC_GROUP_DISTS_M = [550, 800]; // each group's distance from the anchor
+const BOT_STATIC_GROUP_DISTS_M = [900]; // each group's distance from the anchor
 const BOT_STATIC_CLUSTER_M = 18; // member offset from the group center (< PROXIMITY_RADIUS)
 const BOT_STATIC_ORBIT_M = 6; // tiny liveliness orbit so resident markers aren't frozen
 
@@ -805,10 +808,11 @@ function updateExistingHuddle(ctx: any, h: any, cluster: any[], now: bigint): vo
     for (const p of cluster) bumpWarmthPoints(ctx, h.roomId, p.identity);
   }
 
-  // 5. Heatmap: an ACTIVE huddle is the only source of heat. Every tick, deposit weight at the
-  // centroid scaled by member count (bigger huddle ⇒ hotter, faster). Decay slow-fades it.
+  // 5. Heatmap: an ACTIVE huddle is the only source of heat. Each member deposits weight at
+  // THEIR OWN position every tick — so a moving huddle paints a TRAIL along its path and a
+  // standing one builds a hot hub. Decay slow-fades it, leaving a bright-head/fading-tail wake.
   if (next.status === 'active') {
-    addHeat(ctx, h.roomId, c.lat, c.lng, cluster.length * HEAT_PER_HUDDLE_TICK);
+    for (const p of cluster) addHeat(ctx, h.roomId, p.lat, p.lng, HEAT_PER_HUDDLE_TICK);
   }
 
   ctx.db.huddle.id.update(next);
@@ -984,15 +988,10 @@ function hasRealUser(ctx: any, roomId: bigint): boolean {
   return realHumansInRoom(ctx, roomId).length > 0;
 }
 
-// Spawn the bot fleet around `anchor`: BOT_HUDDLER_COUNT huddlers (share one
-// rendezvous near the anchor) + BOT_WANDERER_COUNT wanderers (homes scattered over
-// the area). Each gets user + presence + score + bot rows. Also seeds an instant
-// heat burst so the map is alive on the very next frame.
+// Spawn the bot fleet around `anchor`: BOT_ROAM_GROUP_COUNT roaming groups (walk loops →
+// heat trails) + BOT_WANDERER_COUNT solo wanderers (no heat) + BOT_STATIC_GROUP_COUNT
+// resident groups (standing hubs). Each bot gets user + presence + score + bot rows.
 function spawnBots(ctx: any, roomId: bigint, anchor: { lat: number; lng: number }): void {
-  // Shared rendezvous for the huddlers — a fixed offset from the anchor.
-  const rdv = metersToLatLng(BOT_RENDEZVOUS_OFFSET_M, BOT_RENDEZVOUS_OFFSET_M, anchor.lat);
-  const rendezvous = { lat: anchor.lat + rdv.dLat, lng: anchor.lng + rdv.dLng };
-
   let nameIdx = 0;
   const nextName = () => BOT_NAMES[nameIdx++ % BOT_NAMES.length];
 
@@ -1029,10 +1028,18 @@ function spawnBots(ctx: any, roomId: bigint, anchor: { lat: number; lng: number 
     });
   };
 
-  // Huddlers: home = the shared rendezvous; spread them by phase so they sit close.
-  for (let i = 0; i < BOT_HUDDLER_COUNT; i++) {
-    const phase = (i / Math.max(1, BOT_HUDDLER_COUNT)) * 2 * Math.PI;
-    insertBot('huddler', rendezvous, phase);
+  // Roaming groups: all members of a group share one loop ORIGIN (homeLat/Lng) at a distinct
+  // offset from the anchor; botPosition circles that origin so the group walks together and
+  // leaves a heat trail. Members differ only by orbit phase (paramA) so they stay clustered.
+  for (let g = 0; g < BOT_ROAM_GROUP_COUNT; g++) {
+    const groupAngle = (g / Math.max(1, BOT_ROAM_GROUP_COUNT)) * 2 * Math.PI; // distinct directions
+    const groupDist = BOT_ROAM_ORIGIN_DISTS_M[g % BOT_ROAM_ORIGIN_DISTS_M.length];
+    const oOff = metersToLatLng(Math.cos(groupAngle) * groupDist, Math.sin(groupAngle) * groupDist, anchor.lat);
+    const origin = { lat: anchor.lat + oOff.dLat, lng: anchor.lng + oOff.dLng };
+    for (let m = 0; m < BOT_ROAM_GROUP_SIZE; m++) {
+      const phase = (m / Math.max(1, BOT_ROAM_GROUP_SIZE)) * 2 * Math.PI;
+      insertBot('roamer', origin, phase);
+    }
   }
 
   // Wanderers: homes scattered in an annulus around the anchor (min..max radius) so
@@ -1067,7 +1074,10 @@ function spawnBots(ctx: any, roomId: bigint, anchor: { lat: number; lng: number 
     }
   }
 
-  const total = BOT_HUDDLER_COUNT + BOT_WANDERER_COUNT + BOT_STATIC_GROUP_COUNT * BOT_STATIC_GROUP_SIZE;
+  const total =
+    BOT_ROAM_GROUP_COUNT * BOT_ROAM_GROUP_SIZE +
+    BOT_WANDERER_COUNT +
+    BOT_STATIC_GROUP_COUNT * BOT_STATIC_GROUP_SIZE;
   emitEvent(ctx, roomId, 'user_joined', `${total} people are around`);
 }
 
@@ -1096,33 +1106,25 @@ function botPosition(ctx: any, b: any, now: bigint): { lat: number; lng: number 
     return { lat: b.homeLat + off.dLat, lng: b.homeLng + off.dLng };
   }
 
-  // Huddler: homeLat/Lng IS the shared rendezvous. Smoothly blend between a tight
-  // orbit at the rendezvous (clustered → huddle forms) and a scatter point ~220m out
-  // (dispersed → huddle cools/ends), then back, so the full loop repeats every cycle.
-  // `scatter` ∈ [0,1]: 0 = clustered, 1 = fully dispersed. Easing avoids teleporting.
-  const cycle = BOT_RENDEZVOUS_HOLD_S + BOT_RENDEZVOUS_GAP_S;
-  const phaseInCycle = ((tSeconds % cycle) + cycle) % cycle;
-  const scatter =
-    phaseInCycle < BOT_RENDEZVOUS_HOLD_S
-      ? 0
-      : Math.sin(((phaseInCycle - BOT_RENDEZVOUS_HOLD_S) / BOT_RENDEZVOUS_GAP_S) * Math.PI); // 0→1→0
-
-  // Liveliness orbit while clustered (small radius); scatter target is fixed per bot.
-  const orbitAngle = b.paramA + tSeconds * 0.4;
-  const orbit = metersToLatLng(
-    Math.cos(orbitAngle) * BOT_RENDEZVOUS_RADIUS_M,
-    Math.sin(orbitAngle) * BOT_RENDEZVOUS_RADIUS_M,
+  // Roamer (default): homeLat/Lng is the group's loop ORIGIN, shared by all its members. The
+  // group center circles that origin at BOT_ROAM_SPEED; each member orbits the moving center
+  // within BOT_ROAM_CLUSTER_M (< proximity), so the group stays one active huddle while it
+  // TRANSLATES across the map. Its per-member heat deposits then lay a continuous trail. No
+  // scatter phase — it never disperses, so the huddle stays active and the wake keeps growing.
+  const omega = BOT_ROAM_SPEED / BOT_ROAM_RADIUS_M; // angular speed along the loop (rad/s)
+  const centerOff = metersToLatLng(
+    Math.cos(tSeconds * omega) * BOT_ROAM_RADIUS_M,
+    Math.sin(tSeconds * omega) * BOT_ROAM_RADIUS_M,
     b.homeLat
   );
-  const flee = metersToLatLng(
-    Math.cos(b.paramA) * BOT_SCATTER_RADIUS_M,
-    Math.sin(b.paramA) * BOT_SCATTER_RADIUS_M,
-    b.homeLat
+  const center = { lat: b.homeLat + centerOff.dLat, lng: b.homeLng + centerOff.dLng };
+  const memberAngle = b.paramA + tSeconds * 0.5; // members circle the moving center for liveliness
+  const memberOff = metersToLatLng(
+    Math.cos(memberAngle) * BOT_ROAM_CLUSTER_M,
+    Math.sin(memberAngle) * BOT_ROAM_CLUSTER_M,
+    center.lat
   );
-  return {
-    lat: b.homeLat + orbit.dLat * (1 - scatter) + flee.dLat * scatter,
-    lng: b.homeLng + orbit.dLng * (1 - scatter) + flee.dLng * scatter,
-  };
+  return { lat: center.lat + memberOff.dLat, lng: center.lng + memberOff.dLng };
 }
 
 // Remove the whole fleet + their derived rows (reset between demos).
@@ -1136,14 +1138,13 @@ function despawnBots(ctx: any, roomId: bigint): void {
     }
     ctx.db.bot.identity.delete(identity);
   }
-  // Tearing down the fleet resets the demo (no humans, or a config refresh), so clear the
-  // room's heat too — heat persists *during* a demo (slow-fade) but a teardown starts clean.
-  for (const c of [...ctx.db.heatCell.roomId.filter(roomId)]) ctx.db.heatCell.id.delete(c.id);
+  // Heat is intentionally NOT cleared here: it must persist through teardown (idle, config
+  // refresh, republish) and only fade via decay, so trails/hubs linger instead of vanishing.
   // The next huddleTick sees the bots gone and ends any now-empty huddles.
 }
 
-// Scheduled ≈1.5s: drive the demo bots. Spawn-if-needed, move, keep heat warm, or
-// despawn — all scoped to the `demo` room only.
+// Scheduled ≈1.5s: drive the demo bots. Spawn-if-needed, config-refresh, move, or
+// despawn — all scoped to the `demo` room only. (Heat comes from the huddle engine.)
 export const botTick = spacetimedb.reducer(
   { timer: botTickTimer.rowType },
   (ctx, { timer: _timer }) => {
@@ -1164,9 +1165,12 @@ export const botTick = spacetimedb.reducer(
     // (e.g. after a publish that changed bot counts/kinds), clear it so it respawns fresh
     // next tick. This migrates the fleet without a destructive DB wipe and without waiting
     // for all humans to leave. No-op once the fleet matches.
-    const expectedTotal = BOT_HUDDLER_COUNT + BOT_WANDERER_COUNT + BOT_STATIC_GROUP_COUNT * BOT_STATIC_GROUP_SIZE;
-    const hasResidents = existingBots.some((b: any) => b.kind === 'resident');
-    if (existingBots.length > 0 && (existingBots.length !== expectedTotal || !hasResidents)) {
+    const expectedTotal =
+      BOT_ROAM_GROUP_COUNT * BOT_ROAM_GROUP_SIZE +
+      BOT_WANDERER_COUNT +
+      BOT_STATIC_GROUP_COUNT * BOT_STATIC_GROUP_SIZE;
+    const hasRoamers = existingBots.some((b: any) => b.kind === 'roamer');
+    if (existingBots.length > 0 && (existingBots.length !== expectedTotal || !hasRoamers)) {
       despawnBots(ctx, roomId);
       return;
     }

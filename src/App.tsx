@@ -191,7 +191,14 @@ function App() {
     () =>
       heatCells
         .filter((c) => myRoomId !== undefined && c.roomId === myRoomId)
-        .map((c) => ({ lat: c.lat, lng: c.lng, weight: c.weight })),
+        .map((c) => ({
+          lat: c.lat,
+          lng: c.lng,
+          weight: c.weight,
+          // lastUpdatedAt is refreshed only when a huddle deposits here (decay preserves it),
+          // so the map can tell "live" cells (pulse) from persisted trail/history (steady).
+          lastUpdatedMs: Number(c.lastUpdatedAt.microsSinceUnixEpoch / 1000n),
+        })),
     [heatCells, myRoomId]
   );
 

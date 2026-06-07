@@ -89,18 +89,21 @@ banners in `PROJECT.md` / `HUDDLE_LOGIC.md` / `TECHNICAL_PLAN.md`).
 ### Demo & polish
 - ✅ **Demo bots + huddle-driven heatmap** (`bot` table + scheduled `botTick` in
   `spacetimedb/src/index.ts`). Auto-spawns in the `demo` room once a real user has a fix
-  (anchored to that user's location, NYC fallback comes free via the client): 3 **huddler** bots
-  that converge on a ~40s cycle (candidate→active→cooling→ended) near you + 6 **wanderer** bots
-  spread ~1km (solo, no heat) + 2 **resident** groups of 3 sitting together elsewhere (standing
-  huddles → persistent hot hubs). Bots write only `presence` (engine clusters them with **no**
-  special-casing); auto-despawns when no real user has been seen within the stale window.
-- ✅ **Heat is huddle-driven + slow-fade persistent.** Heat is generated **only** by `active`
-  huddles (`addHeat` at the centroid each tick, scaled by member count) — never by a lone
-  heartbeat or solo bot. It accumulates (cap `HEAT_MAX=40`) and slow-fades (`×0.97`/10s, ~4-min
-  half-life), so hangout spots persist. Client weight ramp widened (`useMapboxMap`) to `0..40`
-  for a real intensity gradient; the heatmap's gentle radius "breathing" is kept. Verified on a
-  local server: solo user makes 0 heat; heat appears only at the 3 huddle centroids, climbs to
-  cap, and lingers (no ~40s blink-out); 6 wanderers stay solo.
+  (anchored to that user's location, NYC fallback comes free via the client): 2 **roamer** groups
+  of 3 that walk shared loops together (moving huddles → heat **trails**) + 6 **wanderer** bots
+  spread ~1km (solo, no heat) + 1 **resident** group of 3 sitting together elsewhere (standing
+  huddle → persistent hot hub). Bots write only `presence` (engine clusters them with **no**
+  special-casing); `botTick` config-refreshes the fleet on a publish; despawns when no real user
+  has been seen within the stale window (heat is **not** wiped on despawn).
+- ✅ **Heat is huddle-driven, trails, and persists.** Heat is generated **only** by `active`
+  huddles — **each member deposits at their own position** each tick (`addHeat`,
+  `HEAT_PER_HUDDLE_TICK`) — so a moving huddle lays a trail and a standing one builds a hub; a
+  lone heartbeat/solo bot makes none. Cells (~90 m, `HEAT_CELL_DEGREES=0.0008`) accumulate (cap
+  `HEAT_MAX=40`), **slow-fade** (`×0.97`/10s, ~4-min half-life), and are **never bulk-cleared**
+  (persist through teardown/republish). **Client (`useMapboxMap`):** steady base heatmap +
+  **pulsing `activity-heat-live` overlay** of only recently-updated cells (`LIVE_WINDOW_MS`), so
+  the pulse signals live activity (trail head + hubs), not decoration. Verified locally: solo user
+  = 0 heat; roamer cells advance with a gradient; resident hub pins at cap; trails linger.
 - ✅ Two-client end-to-end (both share a location → huddle forms/warms/cools): verified via
   CLI + the live browser client (forming → activated → cooling → ended cycles in the feed).
 - ⬜ Purge remaining zone/tap-to-move prose from the spec docs (banners cover it for now);
@@ -115,11 +118,12 @@ Phase 2 north star (see `PROJECT.md` "North Star v2" and `TECHNICAL_PLAN.md`
 is a later step). Reuses the Phase-1 proximity engine.
 
 ### Backend (`spacetimedb/src/index.ts`)
-- ✅ `heat_cell(roomId, cellKey, lat, lng, weight, lastUpdatedAt)` — ~200 m grid activity
+- ✅ `heat_cell(roomId, cellKey, lat, lng, weight, lastUpdatedAt)` — ~90 m grid activity
   accumulation (index `by_room_cell`). Written **only** by the huddle engine via `addHeat`
-  (centroid of an `active` huddle, weight ∝ member count, clamped to `HEAT_MAX`); `decayHuddles`
-  **slow-fades** it (`×0.97`/10s, deletes fully-cold cells). Heat tracks huddles, not raw
-  movement. Published + verified on maincloud.
+  (each `active`-huddle **member at their own position** each tick → trails, clamped to
+  `HEAT_MAX`); `decayHuddles` **slow-fades** it (`×0.97`/10s, deletes fully-cold cells), never
+  bulk-cleared. `lastUpdatedAt` (refreshed on deposit, preserved by decay) drives the client's
+  live-vs-trail pulse. Heat tracks huddles, not raw movement. Published + verified on maincloud.
 - ⬜ `visited_cell(identity, roomId, cellKey, firstSeenAt, lastSeenAt, count)` — drives the
   "city explored %" metric.
 - ⬜ `recommendation(identity, roomId, lat, lng, placeLabel, sentiment, note, createdAt)`
