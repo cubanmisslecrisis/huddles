@@ -71,8 +71,16 @@ export function useMapMarkerDefs({
     // Static place pins — only meaningful once we know where the user is.
     if (origin) {
       for (const p of staticPins) {
-        const visible =
-          (p.kind === 'reco' && activeLayers.recs) || (p.kind === 'saved' && activeLayers.saved);
+        let visible = false;
+
+        // Show recs and saved places when those layers are active
+        if ((p.kind === 'reco' || p.kind === 'music' || p.kind === 'content') && activeLayers.recs) {
+          visible = true;
+        }
+        if ((p.kind === 'saved') && activeLayers.saved) {
+          visible = true;
+        }
+
         if (!visible) continue;
         const resolved: ResolvedPin = { ...p, lat: origin.lat + p.dLat, lng: origin.lng + p.dLng };
         defs.push({

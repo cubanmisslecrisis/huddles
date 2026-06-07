@@ -1,5 +1,7 @@
+import { Music, Camera, Heart, Bookmark, Star } from 'lucide-react';
 import { colorFor, initialOf } from '@/lib/avatar';
-import { CATEGORY_META, type StaticPin } from '@/lib/places-data';
+import { pinColor, onYellow } from '@/lib/theme';
+import type { StaticPin } from '@/lib/places-data';
 
 export type SelKind = 'friend' | 'huddle' | 'pin';
 export type Selection = { kind: SelKind; id: string } | null;
@@ -164,32 +166,68 @@ export function PinMarker({
   dimmed: boolean;
   onSelect: () => void;
 }) {
-  const meta = CATEGORY_META[pin.category];
+  const color = pinColor(pin.color);
+  const dark = pin.color === 'yellow';
+
+  if (pin.kind === 'reco') {
+    return (
+      <button
+        onClick={onSelect}
+        aria-label={`Recommendation: ${pin.category}, ${pin.distanceLabel}`}
+        className="group block transition-all duration-200"
+        style={{ opacity: dimmed ? 0.5 : 1 }}
+      >
+        <span className="relative block transition-transform duration-200 group-hover:-translate-y-1">
+          <span
+            className="relative block rounded-2xl px-3 py-2 text-left shadow-[0_8px_16px_rgba(20,20,20,0.18)]"
+            style={{
+              background: color,
+              color: onYellow,
+              boxShadow: selected ? `0 0 0 5px color-mix(in oklab, ${color} 40%, transparent)` : undefined,
+            }}
+          >
+            <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide">
+              {pin.label} <Star className="h-3 w-3" fill="currentColor" />
+            </span>
+            <span className="block text-sm font-bold leading-tight">{pin.category}</span>
+            <span className="block text-xs font-semibold opacity-80">{pin.distanceLabel}</span>
+            <span
+              className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1 rotate-45"
+              style={{ background: color }}
+              aria-hidden
+            />
+          </span>
+        </span>
+      </button>
+    );
+  }
+
+  const Icon =
+    pin.kind === 'music' ? Music : pin.kind === 'content' ? Camera : pin.color === 'pink' ? Heart : Bookmark;
 
   return (
     <button
       onClick={onSelect}
-      aria-label={`${meta.label}: ${pin.name}`}
+      aria-label={pin.kind === 'music' ? 'Music spot' : pin.kind === 'content' ? 'Photo from a friend' : 'Saved place'}
       className="group block transition-all duration-200"
       style={{ opacity: dimmed ? 0.5 : 1 }}
     >
       <span className="relative block transition-transform duration-200 group-hover:-translate-y-1">
         <span
-          className="flex items-center justify-center rounded-full border-2 border-white bg-white"
+          className="flex h-10 w-10 items-center justify-center rounded-full rounded-bl-none border-2 border-white shadow-[0_8px_16px_rgba(20,20,20,0.18)]"
           style={{
-            width: 36,
-            height: 36,
-            fontSize: 18,
-            lineHeight: 1,
-            transform: selected ? 'scale(1.15)' : undefined,
-            boxShadow: selected
-              ? `0 0 0 5px color-mix(in oklab, var(--color-foreground) 18%, transparent), 0 6px 14px rgba(20,20,20,0.22)`
-              : '0 6px 14px rgba(20,20,20,0.22)',
+            background: color,
+            transform: 'rotate(45deg)',
+            boxShadow: selected ? `0 0 0 5px color-mix(in oklab, ${color} 35%, transparent)` : undefined,
           }}
         >
-          <span aria-hidden>{meta.emoji}</span>
+          <Icon
+            className="h-5 w-5"
+            style={{ transform: 'rotate(-45deg)', color: dark ? onYellow : '#fff' }}
+            fill={pin.kind === 'saved' ? 'currentColor' : 'none'}
+            strokeWidth={2.4}
+          />
         </span>
-        <Tail color="#fff" />
       </span>
     </button>
   );
