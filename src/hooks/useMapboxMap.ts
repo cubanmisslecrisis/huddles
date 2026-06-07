@@ -149,17 +149,19 @@ export function useMapboxMap({
         'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 0, 0, 4, 0.4, 8, 0.7, 16, 1],
         // Intensity amplifies the kernel density — stronger at closer zoom.
         'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 0.4, 13, 1.0, 15, 1.8, 17, 2.5],
-        // Gradient blob: transparent → purple → pink → coral → orange (hot core)
+        // Classic thermal heatmap: blue → cyan → green → yellow → orange → red → magenta
         'heatmap-color': [
           'interpolate',
           ['linear'],
           ['heatmap-density'],
           0,    'rgba(0,0,0,0)',
-          0.2,  'rgba(120,40,220,0.5)',
-          0.4,  'rgba(220,50,180,0.7)',
-          0.6,  'rgba(255,80,100,0.82)',
-          0.8,  'rgba(255,140,40,0.9)',
-          1,    'rgba(255,200,60,1)',
+          0.1,  'rgba(0,0,255,0.6)',
+          0.25, 'rgba(0,220,220,0.75)',
+          0.4,  'rgba(0,220,0,0.82)',
+          0.55, 'rgba(220,220,0,0.88)',
+          0.7,  'rgba(255,140,0,0.92)',
+          0.85, 'rgba(255,0,0,0.96)',
+          1,    'rgba(255,0,220,1)',
         ],
         // Radius scaled to ~cell size on screen. At zoom 14 one ~200m cell ≈ 27px.
         'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 10, 8, 12, 16, 14, 30, 15, 55, 16, 100, 17, 180],
