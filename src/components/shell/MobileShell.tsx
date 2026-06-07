@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Search, Plus } from 'lucide-react';
 import { type MapControls } from '@/components/map/MapCanvas';
 import { GoogleMapsStyle } from '@/components/map/GoogleMapsStyle';
 import { MapStatusChips, MapFilterChips } from '@/components/map/MapChips';
@@ -136,7 +137,30 @@ export function MobileShell({
         {sheetContent}
       </BottomSheet>
 
-      <BottomNavIsland active={lens} onChange={onChangeLens} onSearch={onSearch} onAdd={onAdd} />
+      <BottomNavIsland active={lens} onChange={onChangeLens} />
+
+      {/* FABs: positioned from the h-dvh root so bottom is relative to the actual screen */}
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex justify-end px-4"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px + 68px + 14px)' }}
+      >
+        <div className="pointer-events-auto flex flex-col items-center gap-2.5">
+          <button
+            onClick={onSearch}
+            aria-label="Search"
+            className="flex h-14 w-14 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-[0_8px_24px_rgba(20,20,20,0.12)] transition hover:bg-secondary active:scale-95"
+          >
+            <Search className="h-6 w-6" strokeWidth={2.4} />
+          </button>
+          <button
+            onClick={onAdd}
+            aria-label="Add to map"
+            className="flex h-14 w-14 items-center justify-center rounded-full bg-red text-white shadow-[0_8px_24px_rgba(240,68,56,0.4)] transition hover:brightness-105 active:scale-95"
+          >
+            <Plus className="h-7 w-7" strokeWidth={2.6} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
