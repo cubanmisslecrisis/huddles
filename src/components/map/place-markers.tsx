@@ -2,6 +2,25 @@ import { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import type { Place } from '@/lib/google-places';
 
+function getPlaceIcon(type: string): string {
+  const typeStr = type.toLowerCase();
+  if (typeStr.includes('restaurant')) return '🍽️';
+  if (typeStr.includes('cafe') || typeStr.includes('coffee')) return '☕';
+  if (typeStr.includes('bakery')) return '🥐';
+  if (typeStr.includes('bar')) return '🍺';
+  if (typeStr.includes('pizza')) return '🍕';
+  if (typeStr.includes('sushi')) return '🍣';
+  if (typeStr.includes('grocery')) return '🛒';
+  if (typeStr.includes('shopping')) return '🛍️';
+  if (typeStr.includes('bank')) return '🏦';
+  if (typeStr.includes('library')) return '📚';
+  if (typeStr.includes('park')) return '🌳';
+  if (typeStr.includes('museum')) return '🎨';
+  if (typeStr.includes('hotel')) return '🏨';
+  if (typeStr.includes('transit')) return '🚇';
+  return '📍';
+}
+
 export function PlaceMarkers({
   map,
   places,
@@ -28,28 +47,30 @@ export function PlaceMarkers({
     });
 
     // Add or update markers for current places
-    places.forEach((place, index) => {
-      const markerNumber = index + 1;
+    places.forEach((place) => {
       if (markersRef.current.has(place.placeId)) {
         const marker = markersRef.current.get(place.placeId)!;
         marker.setLngLat([place.lng, place.lat]);
       } else {
         const el = document.createElement('div');
-        el.className = 'google-maps-marker';
+        el.className = 'place-label-marker';
 
         const isSelected = selectedPlace?.placeId === place.placeId;
+        const icon = getPlaceIcon(place.type || '');
 
         el.innerHTML = `
-          <div class="google-maps-marker-pin ${isSelected ? 'selected' : ''}">
-            <div class="google-maps-marker-number">${markerNumber}</div>
+          <div class="place-label ${isSelected ? 'selected' : ''}">
+            <span class="place-icon">${icon}</span>
+            <span class="place-name">${place.name}</span>
           </div>
         `;
 
-        el.addEventListener('click', () => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
           onSelectPlace(isSelected ? null : place);
         });
 
-        const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+        const marker = new mapboxgl.Marker({ element: el })
           .setLngLat([place.lng, place.lat])
           .addTo(map);
 
