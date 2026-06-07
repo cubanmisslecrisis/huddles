@@ -3,7 +3,7 @@ import { searchNearbyPlaces } from '@/lib/google-places';
 import type { Place } from '@/lib/google-places';
 import { MapCanvas } from './MapCanvas';
 import type { MapAvatar, HeatPoint, Selection } from './markers';
-import type { LayerKey } from '@/lib/places-data';
+import type { LayerKey, FilterKey } from '@/lib/places-data';
 import type { MapControls } from './MapCanvas';
 
 const CATEGORIES = [
@@ -17,6 +17,18 @@ const CATEGORIES = [
   { id: 'grocery', label: 'Groceries', emoji: '🛒', types: ['grocery_store'] },
 ];
 
+// Maps the app's FilterKey to the CATEGORIES id used internally.
+const FILTER_TO_CATEGORY: Record<FilterKey, string> = {
+  all: 'all',
+  huddles: 'all',
+  cafes: 'cafe',
+  restaurants: 'restaurant',
+  bars: 'bar',
+  food: 'all',
+  music: 'all',
+  activities: 'all',
+};
+
 export function GoogleMapsStyle({
   avatars,
   heat,
@@ -24,6 +36,7 @@ export function GoogleMapsStyle({
   selection,
   onSelect,
   activeLayers,
+  filter = 'all',
   controlsRef,
   friends = [],
 }: {
@@ -33,6 +46,7 @@ export function GoogleMapsStyle({
   selection: Selection;
   onSelect: (s: Selection) => void;
   activeLayers: Record<LayerKey, boolean>;
+  filter?: FilterKey;
   controlsRef?: React.MutableRefObject<MapControls | null>;
   friends?: Array<{ key: string; name: string; distanceMeters?: number | null }>;
 }) {
@@ -42,6 +56,11 @@ export function GoogleMapsStyle({
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'relevant' | 'distance' | 'rating'>('relevant');
+
+  // Sync the chip filter from the parent into the internal category state.
+  useEffect(() => {
+    setActiveCategory(FILTER_TO_CATEGORY[filter] ?? 'all');
+  }, [filter]);
 
   // Auto-load all nearby places
   useEffect(() => {
@@ -60,7 +79,7 @@ export function GoogleMapsStyle({
     loadPlaces();
   }, [myLoc]);
 
-  const filteredPlaces = places
+  const filteredPlaces = (activeLayers.recs === false ? [] : places)
     .filter((place) => {
       const name = place.name.toLowerCase();
       return !name.startsWith('reco') && name !== '% arvo café' && name !== '% arvo cafe' && !name.includes('saved places');
@@ -68,7 +87,6 @@ export function GoogleMapsStyle({
     .filter((place) => {
       if (activeCategory !== 'all') {
         const category = CATEGORIES.find((c) => c.id === activeCategory);
-        // Filter by category type matching
         return category?.types.some((t) => place.type?.includes(t));
       }
       return true;

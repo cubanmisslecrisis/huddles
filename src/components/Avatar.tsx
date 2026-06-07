@@ -16,6 +16,7 @@ export function Avatar({
   selected = false,
   ring,
   className,
+  style,
 }: {
   name: string;
   colorKey?: string;
@@ -25,6 +26,7 @@ export function Avatar({
   selected?: boolean;
   ring?: string;
   className?: string;
+  style?: React.CSSProperties;
 }) {
   const key = colorKey ?? name;
   const bg = colorFor(key);
@@ -44,6 +46,7 @@ export function Avatar({
         boxShadow: selected
           ? `0 0 0 4px color-mix(in oklab, ${ring ?? bg} 35%, transparent)`
           : '0 4px 12px rgba(20,20,20,0.18)',
+        ...style,
       }}
     >
       {!broken && src ? (

@@ -107,6 +107,7 @@ export function MobileShell({
         selection={selection}
         onSelect={onSelect}
         activeLayers={activeLayers}
+        filter={filter}
         controlsRef={controlsRef}
         friends={friends}
       />
