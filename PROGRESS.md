@@ -87,14 +87,20 @@ banners in `PROJECT.md` / `HUDDLE_LOGIC.md` / `TECHNICAL_PLAN.md`).
   full mobile map on maincloud (real merged huddle + friend distance observed in-browser).
 
 ### Demo & polish
-- ✅ **Demo bots + ambient heatmap** (`bot` table + scheduled `botTick` in `spacetimedb/src/index.ts`).
-  Auto-spawns in the `demo` room once a real user has a fix (anchored to that user's location,
-  NYC fallback comes free via the client): 3 "huddler" bots scripted to converge on a ~40s
-  cycle (candidate→active→cooling→ended, reliably) + 6 "wanderer" bots spread ~500m to keep
-  the map alive. Bots write `presence` + reuse `bumpHeat` (the engine clusters them with **no**
-  special-casing); a spawn-time heat burst + per-tick ambient hotspots keep the heatmap rich.
-  Auto-despawns when no real user has been seen within the stale window. Verified on a local
-  server: spawn, movement, full huddle loop with warmth, sustained/spread heat, lifecycle events.
+- ✅ **Demo bots + huddle-driven heatmap** (`bot` table + scheduled `botTick` in
+  `spacetimedb/src/index.ts`). Auto-spawns in the `demo` room once a real user has a fix
+  (anchored to that user's location, NYC fallback comes free via the client): 3 **huddler** bots
+  that converge on a ~40s cycle (candidate→active→cooling→ended) near you + 6 **wanderer** bots
+  spread ~1km (solo, no heat) + 2 **resident** groups of 3 sitting together elsewhere (standing
+  huddles → persistent hot hubs). Bots write only `presence` (engine clusters them with **no**
+  special-casing); auto-despawns when no real user has been seen within the stale window.
+- ✅ **Heat is huddle-driven + slow-fade persistent.** Heat is generated **only** by `active`
+  huddles (`addHeat` at the centroid each tick, scaled by member count) — never by a lone
+  heartbeat or solo bot. It accumulates (cap `HEAT_MAX=40`) and slow-fades (`×0.97`/10s, ~4-min
+  half-life), so hangout spots persist. Client weight ramp widened (`useMapboxMap`) to `0..40`
+  for a real intensity gradient; the heatmap's gentle radius "breathing" is kept. Verified on a
+  local server: solo user makes 0 heat; heat appears only at the 3 huddle centroids, climbs to
+  cap, and lingers (no ~40s blink-out); 6 wanderers stay solo.
 - ✅ Two-client end-to-end (both share a location → huddle forms/warms/cools): verified via
   CLI + the live browser client (forming → activated → cooling → ended cycles in the feed).
 - ⬜ Purge remaining zone/tap-to-move prose from the spec docs (banners cover it for now);
@@ -110,9 +116,10 @@ is a later step). Reuses the Phase-1 proximity engine.
 
 ### Backend (`spacetimedb/src/index.ts`)
 - ✅ `heat_cell(roomId, cellKey, lat, lng, weight, lastUpdatedAt)` — ~200 m grid activity
-  accumulation (index `by_room_cell`); `heartbeatLocation` bumps it via `bumpHeat`
-  (clamped to `HEAT_MAX`), `decayHuddles` decays it (drops zeroed cells). Published +
-  verified on maincloud (weights accumulate per cell, decay on the 30 s tick).
+  accumulation (index `by_room_cell`). Written **only** by the huddle engine via `addHeat`
+  (centroid of an `active` huddle, weight ∝ member count, clamped to `HEAT_MAX`); `decayHuddles`
+  **slow-fades** it (`×0.97`/10s, deletes fully-cold cells). Heat tracks huddles, not raw
+  movement. Published + verified on maincloud.
 - ⬜ `visited_cell(identity, roomId, cellKey, firstSeenAt, lastSeenAt, count)` — drives the
   "city explored %" metric.
 - ⬜ `recommendation(identity, roomId, lat, lng, placeLabel, sentiment, note, createdAt)`

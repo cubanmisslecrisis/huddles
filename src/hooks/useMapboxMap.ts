@@ -140,7 +140,11 @@ export function useMapboxMap({
           source: WARMTH_SOURCE_ID,
           slot: 'top',
           paint: {
-            'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 0, 0, 0.5, 0.3, 1, 0.8, 2, 1],
+            // Weight now comes from accumulating huddle heat (server caps a cell at ~40).
+            // Spread the ramp across that range so intensity is a real gradient — fresh/small
+            // huddles read cool, long-lived/large ones saturate hot — instead of every cell
+            // pinning at max (the old 0..2 ramp made all heat look identical).
+            'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 0, 0, 4, 0.2, 12, 0.45, 24, 0.72, 40, 1],
             'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 12, 1.2, 14, 2.0, 16, 3.0, 17, 4.0],
             'heatmap-color': [
               'interpolate',

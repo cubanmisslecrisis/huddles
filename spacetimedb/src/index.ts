@@ -35,13 +35,15 @@ const POINTS_PER_TICK = 5;
 const DECAY_INTERVAL_SECONDS = 10;
 const DECAY_AMOUNT = 1; // huddle warmth removed per decay tick (now 10s)
 
-// Phase-2 activity heatmap: server-aggregated weight per ~grid cell. Tuned so a cell
-// lights up within seconds of activity and fades within ~1 min once it stops.
+// Phase-2 activity heatmap: server-aggregated weight per ~grid cell. Heat is generated
+// ONLY by the huddle engine (at a huddle's centroid, scaled by member count) — never by a
+// lone heartbeat or a solo bot. It accumulates while a huddle is active and SLOW-FADES over
+// minutes once a spot goes quiet, so the map reflects where people actually hung out.
 const HEAT_CELL_DEGREES = 0.002; // ~200 m grid cell (lat) for the heatmap
-const HEAT_PER_HEARTBEAT = 2; // weight added to a cell on each heartbeat
-const HEAT_DECAY_FACTOR = 0.6; // multiplicative decay per tick (smooth, snappy fade)
-const HEAT_MIN = 0.8; // drop cells below this so the table stays small
-const HEAT_MAX = 16; // clamp so a single cell's weight stays bounded
+const HEAT_PER_HUDDLE_TICK = 0.6; // weight added per active-huddle member per huddleTick (1s)
+const HEAT_DECAY_FACTOR = 0.97; // slow multiplicative fade per decay tick (10s) → ~4 min half-life
+const HEAT_MIN = 0.8; // drop fully-cold cells below this so the table stays small
+const HEAT_MAX = 40; // clamp per cell; also the client's "fully hot" reference (see useMapboxMap)
 
 // Scheduled tick cadences, in microseconds.
 const HUDDLE_TICK_MICROS = 1_000_000n; // 1s — runs the huddle state machine
@@ -49,15 +51,22 @@ const PRESENCE_TICK_MICROS = 5_000_000n; // 5s — expire stale presence
 const DECAY_TICK_MICROS = 10_000_000n; // 10s — cool huddle warmth + heatmap
 
 // Phase-2 demo bots: server-simulated movers that make the `demo` room come alive.
-// Bots are NOT real clients — they have no connection. A scheduled botTick mints
-// synthetic identities, writes their `presence` (lat/lng) + `bumpHeat` exactly like a
-// real heartbeat, and the existing huddleTick clusters them with no engine changes.
-// Auto-spawn on the first real user's fix; auto-despawn when no real users remain.
+// Bots are NOT real clients — they have no connection. A scheduled botTick mints synthetic
+// identities and writes their `presence` (lat/lng); the existing huddleTick clusters them
+// with no engine changes. Bots do NOT write heat directly — heat comes only from the huddles
+// they form. Auto-spawn on the first real user's fix; auto-despawn when no real users remain.
+//
+// Three kinds: `huddler` (converge near the user on a cycle → live huddle loop), `wanderer`
+// (spread out and orbit solo → movement only, no heat), `resident` (sit together in fixed
+// groups elsewhere → permanent huddles → persistent hotspots).
 const DEMO_ROOM_CODE = 'demo';
 const BOT_TICK_MICROS = 1_500_000n; // ~1.5s movement cadence (well inside STALE window)
-const BOT_HUDDLER_COUNT = 3; // bots that converge to guarantee a huddle forms
-const BOT_WANDERER_COUNT = 6; // ambient movers spread across the area to keep heat alive
-const BOT_NAMES = ['Maya', 'Jake', 'Sophie', 'Leo', 'Aria', 'Noah', 'Zoe', 'Kai', 'Ivy'];
+const BOT_HUDDLER_COUNT = 3; // bots that converge to guarantee a huddle forms near the user
+const BOT_WANDERER_COUNT = 6; // solo ambient movers spread across the area (no heat)
+const BOT_NAMES = [
+  'Maya', 'Jake', 'Sophie', 'Leo', 'Aria', 'Noah', 'Zoe', 'Kai',
+  'Ivy', 'Mia', 'Theo', 'Luna', 'Finn', 'Ada', 'Otis', 'Nova',
+];
 const BOT_ORBIT_RADIUS_M = 60; // wanderer drift radius around their home
 const BOT_ORBIT_SPEED = 0.25; // wanderer angular speed (radians / second)
 const BOT_RENDEZVOUS_RADIUS_M = 30; // huddlers sit this close to the shared rendezvous
@@ -65,10 +74,18 @@ const BOT_RENDEZVOUS_OFFSET_M = 35; // rendezvous is this far from the anchor (r
 const BOT_RENDEZVOUS_HOLD_S = 22; // huddlers cluster (dwell 10s + warmth) → active ...
 const BOT_RENDEZVOUS_GAP_S = 18; // ... then scatter past cooling (10s) → ended, then repeat
 const BOT_SCATTER_RADIUS_M = 220; // how far huddlers flee during the gap (> STAY_RADIUS)
-const BOT_AREA_SPREAD_M = 500; // radius (m) over which wanderer homes are scattered
-const BOT_WANDERER_MIN_SPREAD_M = 160; // keep wanderer homes off the rendezvous so they
+const BOT_AREA_SPREAD_M = 1000; // outer radius (m) over which wanderer homes are scattered
+const BOT_WANDERER_MIN_SPREAD_M = 300; // keep wanderer homes well off the rendezvous so they
 // read as separate pods around the map rather than merging into one blob with the huddlers
-const BOT_AMBIENT_HOTSPOTS = 8; // fixed cells botTick keeps warm so the heatmap stays rich
+
+// Static "resident" groups: clusters that sit together permanently elsewhere on the map, each
+// forming a standing huddle (→ a persistent heat hub). Members sit within proximity of a fixed
+// group center so the huddle never breaks.
+const BOT_STATIC_GROUP_COUNT = 2; // how many standing groups to place away from the user
+const BOT_STATIC_GROUP_SIZE = 3; // bots per group (≥ MIN_USERS_FOR_HUDDLE)
+const BOT_STATIC_GROUP_DISTS_M = [550, 800]; // each group's distance from the anchor
+const BOT_STATIC_CLUSTER_M = 18; // member offset from the group center (< PROXIMITY_RADIUS)
+const BOT_STATIC_ORBIT_M = 6; // tiny liveliness orbit so resident markers aren't frozen
 
 // ═════════════════════════════════════════════════════════════════════════════
 // PART 1 — location input + proximity (Part 1 owner edits below)
@@ -317,14 +334,15 @@ function heatCellCenter(lat: number, lng: number): { lat: number; lng: number } 
   };
 }
 
-// Add activity weight to the (room, cell) a heartbeat landed in. Upsert via the
-// by_room_cell index; clamp to HEAT_MAX so a stationary user can't run it away.
-function bumpHeat(ctx: any, roomId: bigint, lat: number, lng: number): void {
+// Add `amount` of activity weight to the (room, cell) a huddle's centroid sits in. Upsert via
+// the by_room_cell index; clamp to HEAT_MAX so a standing huddle can't run it away. This is the
+// ONE heat writer — called only by the huddle engine, so heat tracks huddles, not raw movement.
+function addHeat(ctx: any, roomId: bigint, lat: number, lng: number, amount: number): void {
   const key = heatCellKey(lat, lng);
   const existing = [...ctx.db.heatCell.by_room_cell.filter([roomId, key])];
   if (existing.length > 0) {
     const c = existing[0];
-    const weight = Math.min(HEAT_MAX, c.weight + HEAT_PER_HEARTBEAT);
+    const weight = Math.min(HEAT_MAX, c.weight + amount);
     if (weight !== c.weight) ctx.db.heatCell.id.update({ ...c, weight, lastUpdatedAt: ctx.timestamp });
   } else {
     const center = heatCellCenter(lat, lng);
@@ -334,7 +352,7 @@ function bumpHeat(ctx: any, roomId: bigint, lat: number, lng: number): void {
       cellKey: key,
       lat: center.lat,
       lng: center.lng,
-      weight: HEAT_PER_HEARTBEAT,
+      weight: Math.min(HEAT_MAX, amount),
       lastUpdatedAt: ctx.timestamp,
     });
   }
@@ -453,8 +471,8 @@ export const heartbeatLocation = spacetimedb.reducer(
       status: 'active',
     });
 
-    // Phase-2 heatmap: bump this grid cell's activity weight.
-    bumpHeat(ctx, p.roomId, lat, lng);
+    // No heat here: a lone user generates no heat. Heat is created only by the huddle engine
+    // (at the huddle centroid, scaled by member count) when this user actually huddles.
 
     // No inline engine call — the 1s huddleTick is the single clock that advances every
     // room's huddle state. Heartbeat only writes presence + heat (see HUDDLE_LOGIC.md).
@@ -787,6 +805,12 @@ function updateExistingHuddle(ctx: any, h: any, cluster: any[], now: bigint): vo
     for (const p of cluster) bumpWarmthPoints(ctx, h.roomId, p.identity);
   }
 
+  // 5. Heatmap: an ACTIVE huddle is the only source of heat. Every tick, deposit weight at the
+  // centroid scaled by member count (bigger huddle ⇒ hotter, faster). Decay slow-fades it.
+  if (next.status === 'active') {
+    addHeat(ctx, h.roomId, c.lat, c.lng, cluster.length * HEAT_PER_HUDDLE_TICK);
+  }
+
   ctx.db.huddle.id.update(next);
 }
 
@@ -880,7 +904,7 @@ export const expireStalePresence = spacetimedb.reducer(
   }
 );
 
-// Scheduled ~30s: decay huddle warmth so the map reflects recent activity.
+// Scheduled ~10s: decay huddle warmth + slow-fade the heatmap so the map reflects activity.
 export const decayHuddles = spacetimedb.reducer(
   { timer: decayTickTimer.rowType },
   (ctx, { timer: _timer }) => {
@@ -889,7 +913,9 @@ export const decayHuddles = spacetimedb.reducer(
       const w = Math.max(0, h.warmth - DECAY_AMOUNT);
       if (w !== h.warmth) ctx.db.huddle.id.update({ ...h, warmth: w });
     }
-    // Decay heatmap cells multiplicatively (smooth + snappy); drop faint ones.
+    // Slow-fade heatmap cells (×HEAT_DECAY_FACTOR ≈ 0.97/10s → ~4 min half-life). Active huddles
+    // re-bump their cell every tick so it stays hot; a spot only fades once its huddle is gone,
+    // and is deleted once fully cold (< HEAT_MIN) to keep the table small.
     for (const c of [...ctx.db.heatCell.iter()]) {
       const w = c.weight * HEAT_DECAY_FACTOR;
       if (w < HEAT_MIN) ctx.db.heatCell.id.delete(c.id);
@@ -902,12 +928,12 @@ export const decayHuddles = spacetimedb.reducer(
 // DEMO BOTS — server-simulated movers (no real client connection)
 //
 // botTick (≈1.5s) auto-spawns bots in the `demo` room once a real user has a fix,
-// moves them on a deterministic script, keeps the heatmap rich, and despawns them
-// when no real users remain. Bots reuse the engine untouched: they're just extra
-// `presence` rows that huddleTick clusters like anyone else. `heartbeatLocation`
-// can't be reused (it keys off ctx.sender), so botTick writes the same fields it
-// would: presence lat/lng + bumpHeat. Determinism: motion is a pure function of
-// ctx.timestamp; ctx.random is used only to mint identities + jitter at spawn.
+// moves them on a deterministic script, and despawns them when no real users remain.
+// Bots reuse the engine untouched: they're just extra `presence` rows that huddleTick
+// clusters like anyone else. They write ONLY position — heat is produced by the huddles
+// they form (in the engine), not by bot movement, so a lone bot leaves no heat.
+// Determinism: motion is a pure function of ctx.timestamp; ctx.random is used only to
+// mint identities + jitter at spawn.
 // ═════════════════════════════════════════════════════════════════════════════
 
 // Mint a synthetic Identity. Persisted in bot/user/presence rows so it's stable
@@ -1021,35 +1047,28 @@ function spawnBots(ctx: any, roomId: bigint, anchor: { lat: number; lng: number 
     insertBot('wanderer', home, ctx.random() * 2 * Math.PI);
   }
 
-  // Instant heat: scatter a burst of bumps around the anchor so the heatmap is
-  // populated immediately instead of accumulating over the first ~15s.
-  seedHeatBurst(ctx, roomId, anchor);
-
-  emitEvent(ctx, roomId, 'user_joined', `${BOT_HUDDLER_COUNT + BOT_WANDERER_COUNT} people are around`);
-}
-
-// Scatter heat across cells around the anchor (called once at spawn).
-function seedHeatBurst(ctx: any, roomId: bigint, anchor: { lat: number; lng: number }): void {
-  for (let i = 0; i < BOT_AMBIENT_HOTSPOTS; i++) {
-    const ang = (i / BOT_AMBIENT_HOTSPOTS) * 2 * Math.PI;
-    const dist = BOT_AREA_SPREAD_M * (0.3 + 0.7 * ctx.random());
-    const off = metersToLatLng(Math.cos(ang) * dist, Math.sin(ang) * dist, anchor.lat);
-    // Bump a few times so the cell starts well above the decay-delete floor.
-    for (let k = 0; k < 3; k++) bumpHeat(ctx, roomId, anchor.lat + off.dLat, anchor.lng + off.dLng);
+  // Resident groups: standing huddles placed elsewhere on the map. Each group's members sit
+  // within BOT_STATIC_CLUSTER_M of a fixed center, so they form a permanent active huddle →
+  // a persistent heat hub away from the user. (No heat is seeded directly — it comes from the
+  // huddle these bots form, like everyone else.)
+  for (let g = 0; g < BOT_STATIC_GROUP_COUNT; g++) {
+    const groupAngle = 2.2 + (g / Math.max(1, BOT_STATIC_GROUP_COUNT)) * 2 * Math.PI; // distinct directions
+    const groupDist = BOT_STATIC_GROUP_DISTS_M[g % BOT_STATIC_GROUP_DISTS_M.length];
+    const gOff = metersToLatLng(Math.cos(groupAngle) * groupDist, Math.sin(groupAngle) * groupDist, anchor.lat);
+    const center = { lat: anchor.lat + gOff.dLat, lng: anchor.lng + gOff.dLng };
+    for (let m = 0; m < BOT_STATIC_GROUP_SIZE; m++) {
+      const phase = (m / Math.max(1, BOT_STATIC_GROUP_SIZE)) * 2 * Math.PI;
+      const mOff = metersToLatLng(
+        Math.cos(phase) * BOT_STATIC_CLUSTER_M,
+        Math.sin(phase) * BOT_STATIC_CLUSTER_M,
+        center.lat
+      );
+      insertBot('resident', { lat: center.lat + mOff.dLat, lng: center.lng + mOff.dLng }, phase);
+    }
   }
-}
 
-// Keep a fixed ring of "hotspot" cells warm every tick (cafes/parks staying busy),
-// so the heatmap looks city-alive even where no avatar stands. Hotspots are derived
-// deterministically from the anchor, so they're stable for the demo's duration.
-function warmAmbientHotspots(ctx: any, roomId: bigint, anchor: { lat: number; lng: number }): void {
-  for (let i = 0; i < BOT_AMBIENT_HOTSPOTS; i++) {
-    const ang = (i / BOT_AMBIENT_HOTSPOTS) * 2 * Math.PI;
-    // Fixed (no random) radius so the same cells get re-warmed each tick.
-    const dist = BOT_AREA_SPREAD_M * (0.35 + 0.5 * ((i % 3) / 2));
-    const off = metersToLatLng(Math.cos(ang) * dist, Math.sin(ang) * dist, anchor.lat);
-    bumpHeat(ctx, roomId, anchor.lat + off.dLat, anchor.lng + off.dLng);
-  }
+  const total = BOT_HUDDLER_COUNT + BOT_WANDERER_COUNT + BOT_STATIC_GROUP_COUNT * BOT_STATIC_GROUP_SIZE;
+  emitEvent(ctx, roomId, 'user_joined', `${total} people are around`);
 }
 
 // Deterministic next position for one bot, as a pure function of elapsed time.
@@ -1060,6 +1079,18 @@ function botPosition(ctx: any, b: any, now: bigint): { lat: number; lng: number 
     const off = metersToLatLng(
       Math.cos(angle) * BOT_ORBIT_RADIUS_M,
       Math.sin(angle) * BOT_ORBIT_RADIUS_M,
+      b.homeLat
+    );
+    return { lat: b.homeLat + off.dLat, lng: b.homeLng + off.dLng };
+  }
+
+  if (b.kind === 'resident') {
+    // Stays put at its spot in a standing group — only a tiny orbit for liveliness, well
+    // within the cluster radius so the group's huddle never breaks.
+    const angle = b.paramA + tSeconds * 0.3;
+    const off = metersToLatLng(
+      Math.cos(angle) * BOT_STATIC_ORBIT_M,
+      Math.sin(angle) * BOT_STATIC_ORBIT_M,
       b.homeLat
     );
     return { lat: b.homeLat + off.dLat, lng: b.homeLng + off.dLng };
@@ -1105,6 +1136,9 @@ function despawnBots(ctx: any, roomId: bigint): void {
     }
     ctx.db.bot.identity.delete(identity);
   }
+  // Tearing down the fleet resets the demo (no humans, or a config refresh), so clear the
+  // room's heat too — heat persists *during* a demo (slow-fade) but a teardown starts clean.
+  for (const c of [...ctx.db.heatCell.roomId.filter(roomId)]) ctx.db.heatCell.id.delete(c.id);
   // The next huddleTick sees the bots gone and ends any now-empty huddles.
 }
 
@@ -1126,6 +1160,17 @@ export const botTick = spacetimedb.reducer(
       return;
     }
 
+    // Config-aware refresh: if a fleet exists but doesn't match the current spawn config
+    // (e.g. after a publish that changed bot counts/kinds), clear it so it respawns fresh
+    // next tick. This migrates the fleet without a destructive DB wipe and without waiting
+    // for all humans to leave. No-op once the fleet matches.
+    const expectedTotal = BOT_HUDDLER_COUNT + BOT_WANDERER_COUNT + BOT_STATIC_GROUP_COUNT * BOT_STATIC_GROUP_SIZE;
+    const hasResidents = existingBots.some((b: any) => b.kind === 'resident');
+    if (existingBots.length > 0 && (existingBots.length !== expectedTotal || !hasResidents)) {
+      despawnBots(ctx, roomId);
+      return;
+    }
+
     // Spawn once a real user has an actual fix to anchor on.
     if (existingBots.length === 0) {
       const anchor = realAnchorPresence(ctx, roomId);
@@ -1133,7 +1178,8 @@ export const botTick = spacetimedb.reducer(
       return; // give the new presence rows a tick to settle before moving them
     }
 
-    // Move every bot + bump its heat (same writes a real heartbeat performs).
+    // Move every bot. NO heat here — bots only write position; heat is generated by the
+    // huddles they form (in the engine), so a lone wanderer never paints a heat bubble.
     for (const b of existingBots) {
       const p = ctx.db.presence.identity.find(b.identity);
       if (!p) continue;
@@ -1146,12 +1192,7 @@ export const botTick = spacetimedb.reducer(
         lastSeen: ctx.timestamp,
         status: 'active',
       });
-      bumpHeat(ctx, roomId, pos.lat, pos.lng);
     }
-
-    // Keep the ambient hotspots warm so the heatmap stays rich between bot paths.
-    const anchor = realAnchorPresence(ctx, roomId) ?? { lat: existingBots[0].homeLat, lng: existingBots[0].homeLng };
-    warmAmbientHotspots(ctx, roomId, { lat: anchor.lat, lng: anchor.lng });
   }
 );
 
