@@ -21,10 +21,10 @@ banners in `PROJECT.md` / `HUDDLE_LOGIC.md` / `TECHNICAL_PLAN.md`).
 > machine). **Part 2 huddle engine is now implemented** — distance clustering
 > (union-find within `PROXIMITY_RADIUS_METERS`) → `candidate→active→cooling→ended`,
 > warmth + scoring, with cluster↔huddle matching by membership overlap — and verified
-> on maincloud (huddles form, activate, warm, score, and cool/end). The **client is
-> rebuilt to the GPS model** (`src/App.tsx` +
-> `src/LiveMap.tsx`): browser geolocation streams `heartbeatLocation`, and live users
-> render on a react-leaflet map; `tsc`/`vite build` clean and verified live on maincloud.
+> on maincloud (huddles form, activate, warm, score, and cool/end). The **client is now the
+> mobile social-map shell** (`src/App.tsx` + `src/components/**`, raw `mapbox-gl` light 3D):
+> browser geolocation streams `heartbeatLocation`, and live users render as merged/solo
+> avatars on the map; `tsc`/`vite build` clean and verified live in-browser on maincloud.
 
 ---
 
@@ -55,9 +55,9 @@ banners in `PROJECT.md` / `HUDDLE_LOGIC.md` / `TECHNICAL_PLAN.md`).
 
 ## In progress / blocked 🟡
 
-- **`src/HuddleMap.tsx`** — leftover penguin component, no longer imported (the live map is
-  the new `src/LiveMap.tsx`). Harmless; delete when convenient. (`Profile.tsx` is still
-  imported as a leftover but the new `App.tsx` does not use it either.)
+- **Dead files removed** — `HuddleMap.tsx/.css`, `Profile.tsx/.css`, `App.css`, and the old
+  `LiveMap.tsx` (react-map-gl) are deleted; `react-map-gl`/`leaflet`/`react-leaflet`/
+  `qrcode.react` uninstalled. The map is now the raw-`mapbox-gl` mobile shell (see below).
 
 ## To do ⬜
 
@@ -69,20 +69,17 @@ banners in `PROJECT.md` / `HUDDLE_LOGIC.md` / `TECHNICAL_PLAN.md`).
 - ✅ `huddleTick` (drives engine per room), `expireStalePresence` (stale → re-run engine →
   cool), `decayHuddles` (warmth decay). Verified live on maincloud.
 
-### Frontend — client rebuild (`src/App.tsx` + `src/LiveMap.tsx`) ✅ DONE
-- ✅ Join screen → `joinRoom` (name + room code, default `demo`).
-- ✅ **Geolocation:** `navigator.geolocation.watchPosition` → throttled (~2s)
+### Frontend — client rebuild (`src/App.tsx`) ✅ DONE
+- ✅ Join screen → `joinRoom` (name + room code, default `demo`), re-themed.
+- ✅ **Geolocation:** `navigator.geolocation.watchPosition` → throttled (~3s)
   `heartbeatLocation(lat,lng)`; falls back to a jittered demo location if GPS is denied.
-- ✅ **Live map** (`LiveMap.tsx`) — now **Mapbox GL** (dark) with merged/solo avatar markers
-  + a server-driven activity heatmap. (Originally shipped on react-leaflet; migrated in the
-  Phase-2 map slice below.)
-- ✅ Subscribe (via `useTable`) + room-scoped client filtering; status panel shows
-  location state (locating / live / demo) and nearby count.
-- ✅ Event feed (newest first) + scoreboard (own row highlighted).
-- ✅ "Wave at people nearby" → `pingNearby`.
-- 🟡 Huddle warmth/markers render whatever the engine writes — empty until Part 2 lands.
-- Verified: `tsc -b` + `vite build` clean; live browser client streams GPS and appears on
-  the map on maincloud.
+- ✅ **Live map** — now the **raw `mapbox-gl` mobile shell** with merged/solo avatar markers
+  + a server-driven activity heatmap (see "Mobile social-map shell" below).
+- ✅ Subscribe (via `useTable`) + room-scoped client filtering.
+- ✅ Event feed (Activity lens) + scoreboard (Rankings lens, own row highlighted).
+- ✅ "Wave at people nearby" → `pingNearby` (Ping sheet + per-friend Ping buttons).
+- Verified: `tsc -b` + `vite build` clean; live browser client streams GPS and renders the
+  full mobile map on maincloud (real merged huddle + friend distance observed in-browser).
 
 ### Demo & polish
 - ⬜ Bot mode (simulated movers calling `heartbeatLocation`).
@@ -111,22 +108,38 @@ is a later step). Reuses the Phase-1 proximity engine.
 - ⬜ Hangout history = existing **ended `huddle` + `huddle_member`** (no new table); add a
   `wrapped` view/query (per-user: partners, places, durations).
 
-### Frontend (`src/`)
-- ✅ Migrated the map react-leaflet → **Mapbox GL** (`mapbox-gl@3` + `react-map-gl@7`,
-  `VITE_MAPBOX_TOKEN`); map is the home surface. Graceful placeholder if the token is unset.
-- ✅ **Heatmap layer** from `heat_cell` (Mapbox `heatmap` layer, weight-driven). Snappy
-  fade: heat decays **multiplicatively** (`×0.6`/10 s, cap 16) so cells light up in seconds
-  and fade in ~1 min (verified: weights stay bounded + fractional on maincloud).
-- ✅ **Avatar merging** — a non-ended `huddle` with 2+ active members renders as ONE merged
-  avatar at its centroid; everyone else is a solo avatar (computed in `App.tsx`).
-- ✅ **Huddle "generating heat" pulse** — a merged avatar pulses scaled to the huddle's
-  `warmth` (faster/bigger/redder as it heats), ring tinted to the heatmap ramp; forming
-  huddles (`warmth 0`) stay calm. Verified building + merged rendering; the live pulse
-  needs a real 2+ person *active* huddle to view (CLI peers can't sustain one — they flap
-  offline on disconnect).
-- 🟡 **Mapbox token** — needs a public `pk.*` token in `.env.local` (`VITE_MAPBOX_TOKEN`)
-  to render; placeholder shown until then. (An `sk.*` secret token must NOT be used.)
-- ⬜ **Recommend/avoid overlay** (toggle) — deferred to the next slice.
+### Frontend (`src/`) — Mobile social-map shell ✅
+Ported the `suryanewa/huddle` design skeleton's **mobile shell** in (Tailwind v4 + the
+skeleton's oklch brand tokens + Geist/Archivo fonts), dropping its desktop shell, and wired
+it to our live SpacetimeDB data. Stack stays Vite + React 18; `@base-ui/react`/`shadcn` were
+**not** adopted (Button/Input/Checkbox hand-rolled; flows use a ported `BottomSheet`). `@/`
+path alias added. Structure: `src/components/{map,shell,panels,lens,flows,ui}` + `src/hooks`
++ `src/lib`.
+- ✅ **Map = raw `mapbox-gl`** (no react-map-gl) with **light 3D `standard`** basemap
+  (`lightPreset:'day'`, pitch 60) + **React-portal markers** (`useMapboxMap` /
+  `useMapMarkerDefs`). `VITE_MAPBOX_TOKEN`; graceful placeholder if unset.
+- ✅ **Heatmap layer** from `heat_cell` (warm ramp on the light basemap, weight-driven,
+  refreshed each heartbeat; large radius so cells **fuse** into continuous blobs rather than
+  isolated circles). Decay unchanged server-side (`×0.6`/10 s, cap 16).
+- ✅ **Pulsing "huddle of heat"** — the **heatmap *under* a huddle pulsates** (not the
+  avatar): a second additive `huddle-heat-layer` (`useMapboxMap`) sourced from each merged
+  huddle's centroid, its per-point weight throbbed via `requestAnimationFrame`
+  (`weight = warmth·k`, `k≈0.5..1.2`, ~2.8 s) so amplitude ∝ `warmth` and it stacks onto any
+  existing heat. Bigger magnitude + radius for visibility.
+- ✅ **Avatar markers are static** — non-ended `huddle` w/ 2+ active members → one merged
+  cluster bubble (count, fixed warm color, no pulse); solo people are `Avatar` discs (hashed
+  color + initial — no photos). Verified live in-browser (real "Huddle of 2" + 440 m friend
+  distance).
+- ✅ **Lenses** (bottom nav island): **Map** (Around-you / Recommended / Active-huddles sheet),
+  **Activity** (real `event` feed — `type`→icon/color, `message`, relative time),
+  **Friends** (`presence` list w/ status + distance + Ping), **Rankings** (`score` leaderboard).
+  Profile lives behind the top-right avatar (real stats + Leave room).
+- ✅ **Status chips** ("N friends nearby" / "N huddles forming"), **filter chips**, draggable
+  **bottom sheet** (peek/half/full), **Search** (real, client-side over friends + huddles +
+  places → recenters the map), **Ping** sheet → `pingNearby()`.
+- 🟡 **Places domain (static stubs, no backend):** recommendation cards + place pins
+  (anchored to the user via lat/lng offsets in `src/lib/places-data.ts`), **Add-to-map** sheet
+  (no-op), category filters. **Saved lens dropped.** TODO: real `recommendation`/places table.
 - ⬜ **Wrapped / retrospective screen** — who/where/when/how-long from ended huddles.
 - ⬜ **City exploration %** (needs `visited_cell`).
 

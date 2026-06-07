@@ -7,7 +7,8 @@ export type SelKind = 'friend' | 'huddle' | 'pin';
 export type Selection = { kind: SelKind; id: string } | null;
 
 // A person (solo) or a merged huddle cluster, placed on the map. `heat` is the
-// huddle's warmth (0 for a solo avatar) and drives the pulse ring.
+// huddle's warmth (0 for a solo avatar) and feeds the pulsing huddle-heat layer
+// under the markers — the markers themselves are static.
 export type MapAvatar = {
   key: string;
   lat: number;
@@ -22,30 +23,15 @@ export type MapAvatar = {
 
 export type HeatPoint = { lat: number; lng: number; weight: number };
 
+// A pulsing "huddle of heat" point: a huddle's centroid + its warmth. The heatmap
+// under the huddle throbs with this (see useMapboxMap), not the avatar.
+export type HuddleHeatPoint = { lat: number; lng: number; warmth: number };
+
 // A static place pin with coordinates already resolved against the user's location.
 export type ResolvedPin = StaticPin & { lat: number; lng: number };
 
-// Warmth at which a huddle's pulse maxes out (fastest / biggest / reddest).
-const HEAT_REF = 40;
-const HEAT_STOPS: [number, number, number][] = [
-  [70, 130, 255],
-  [0, 200, 255],
-  [120, 255, 140],
-  [255, 220, 80],
-  [255, 90, 90],
-];
-
-export function heatColor(n: number): string {
-  const t = Math.max(0, Math.min(1, n)) * (HEAT_STOPS.length - 1);
-  const i = Math.floor(t);
-  const f = t - i;
-  const a = HEAT_STOPS[i];
-  const b = HEAT_STOPS[Math.min(HEAT_STOPS.length - 1, i + 1)];
-  const c = a.map((v, k) => Math.round(v + (b[k] - v) * f));
-  return `rgb(${c[0]},${c[1]},${c[2]})`;
-}
-
 const MY_BLUE = '#6B8FFF';
+const HUDDLE_COLOR = '#FA8927'; // static warm color for a huddle marker
 
 function Tail({ color }: { color: string }) {
   return (
@@ -112,9 +98,7 @@ export function HuddleMarker({
   dimmed: boolean;
   onSelect: () => void;
 }) {
-  const n = Math.min(1, avatar.heat / HEAT_REF);
-  const pulsing = avatar.heat > 0;
-  const hot = heatColor(n);
+  const color = avatar.isMe ? MY_BLUE : HUDDLE_COLOR;
   return (
     <button
       onClick={onSelect}
@@ -123,33 +107,24 @@ export function HuddleMarker({
       style={{ opacity: dimmed ? 0.5 : 1 }}
     >
       <span className="relative block transition-transform duration-200 group-hover:-translate-y-1">
-        {pulsing && (
-          <span
-            className="heat-ring"
-            style={
-              {
-                '--pulse-scale': (1.5 + 1.3 * n).toFixed(2),
-                '--pulse-color': hot,
-                animationDuration: `${(1.8 - 1.1 * n).toFixed(2)}s`,
-              } as React.CSSProperties
-            }
-          />
-        )}
         <span
           className="relative flex items-center justify-center rounded-full border-2 border-white font-black text-white"
           style={{
             width: 46,
             height: 46,
-            background: hot,
+            background: color,
             fontSize: 18,
+            transform: selected ? 'scale(1.1)' : undefined,
             boxShadow: selected
-              ? `0 0 0 6px color-mix(in oklab, ${hot} 30%, transparent), 0 8px 18px rgba(20,20,20,0.22)`
-              : `0 0 ${(8 + 18 * n).toFixed(0)}px ${hot}, 0 8px 18px rgba(20,20,20,0.22)`,
+              ? `0 0 0 6px color-mix(in oklab, ${color} 30%, transparent), 0 8px 18px rgba(20,20,20,0.22)`
+              : avatar.isMe
+                ? `0 0 0 4px rgba(107,143,255,0.35), 0 8px 18px rgba(20,20,20,0.22)`
+                : '0 8px 18px rgba(20,20,20,0.22)',
           }}
         >
           {avatar.count}
         </span>
-        <Tail color={hot} />
+        <Tail color={color} />
       </span>
     </button>
   );

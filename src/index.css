@@ -151,29 +151,6 @@
   display: none;
 }
 
-/* Warmth pulse ring under merged huddle markers (ported from the old LiveMap). */
-@keyframes huddle-heat-pulse {
-  0% {
-    transform: scale(0.6);
-    opacity: 0.85;
-  }
-  100% {
-    transform: scale(var(--pulse-scale, 2));
-    opacity: 0;
-  }
-}
-.heat-ring {
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  width: 100%;
-  height: 100%;
-  border-radius: 9999px;
-  background: var(--pulse-color, var(--color-warmth));
-  animation: huddle-heat-pulse 1.6s ease-out infinite;
-  pointer-events: none;
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

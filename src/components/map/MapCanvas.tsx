@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useMapMarkerDefs } from '@/hooks/useMapMarkerDefs';
 import { useMapboxMap } from '@/hooks/useMapboxMap';
-import type { MapAvatar, HeatPoint, Selection } from '@/components/map/markers';
+import type { MapAvatar, HeatPoint, HuddleHeatPoint, Selection } from '@/components/map/markers';
 import type { LayerKey } from '@/lib/places-data';
 
 export type MapControls = { recenter: () => void; flyTo: (lat: number, lng: number) => void };
@@ -9,6 +9,7 @@ export type MapControls = { recenter: () => void; flyTo: (lat: number, lng: numb
 export function MapCanvas({
   avatars,
   heat,
+  huddleHeat,
   myLoc,
   selection,
   onSelect,
@@ -17,6 +18,7 @@ export function MapCanvas({
 }: {
   avatars: MapAvatar[];
   heat: HeatPoint[];
+  huddleHeat: HuddleHeatPoint[];
   myLoc: { lat: number; lng: number } | null;
   selection: Selection;
   onSelect: (s: Selection) => void;
@@ -27,6 +29,7 @@ export function MapCanvas({
   const { mapContainerRef, tokenMissing, markerPortals, recenter, flyTo } = useMapboxMap({
     markerDefs,
     heat,
+    huddleHeat,
     warmthEnabled: activeLayers.warmth,
     myLoc,
   });
