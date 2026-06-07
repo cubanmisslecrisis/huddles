@@ -14,15 +14,41 @@ const DEFAULT_ZOOM = 14.5;
 const WARMTH_SOURCE_ID = 'activity-heat';
 const WARMTH_LAYER_ID = 'activity-heat-layer';
 
+// Scatter each heat cell into several sub-points so the Gaussian kernels overlap
+// irregularly — breaking the "perfect circle" look of a single point.
+// Offsets are fixed (not random) so the shape is stable across renders.
+const SCATTER: Array<[number, number, number]> = [
+  // [distanceMeters, angleDeg, weightFraction]
+  [0,   0,   1.0],  // center — full weight
+  [38,  17,  0.6],
+  [52,  88,  0.5],
+  [44, 160,  0.55],
+  [58, 225,  0.45],
+  [36, 295,  0.6],
+  [62, 342,  0.4],
+];
+const METERS_PER_DEG_LAT = 111_320;
+
 function heatGeoJSON(heat: HeatPoint[]): GeoJSON.FeatureCollection {
-  return {
-    type: 'FeatureCollection',
-    features: heat.map((h) => ({
-      type: 'Feature',
-      properties: { weight: h.weight },
-      geometry: { type: 'Point', coordinates: [h.lng, h.lat] },
-    })),
-  };
+  const features: GeoJSON.Feature[] = [];
+  for (const h of heat) {
+    const mPerDegLng = METERS_PER_DEG_LAT * Math.cos((h.lat * Math.PI) / 180);
+    for (const [dist, angleDeg, wFrac] of SCATTER) {
+      const rad = (angleDeg * Math.PI) / 180;
+      features.push({
+        type: 'Feature',
+        properties: { weight: h.weight * wFrac },
+        geometry: {
+          type: 'Point',
+          coordinates: [
+            h.lng + (dist * Math.sin(rad)) / mPerDegLng,
+            h.lat + (dist * Math.cos(rad)) / METERS_PER_DEG_LAT,
+          ],
+        },
+      });
+    }
+  }
+  return { type: 'FeatureCollection', features };
 }
 
 // Raw mapbox-gl map with React-portal markers. The skeleton's light 3D `standard`
