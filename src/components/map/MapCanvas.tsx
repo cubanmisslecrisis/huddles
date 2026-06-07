@@ -4,6 +4,7 @@ import { useMapboxMap } from '@/hooks/useMapboxMap';
 import { PlacesSearch } from '@/components/map/PlacesSearch';
 import { PlaceMarkers } from '@/components/map/place-markers';
 import { PlacesPanel } from '@/components/map/PlacesPanel';
+import { searchNearbyPlaces } from '@/lib/google-places';
 import type { MapAvatar, HeatPoint, Selection } from '@/components/map/markers';
 import type { LayerKey } from '@/lib/places-data';
 import type { Place } from '@/lib/google-places';
@@ -42,6 +43,25 @@ export function MapCanvas({
   useEffect(() => {
     if (controlsRef) controlsRef.current = { recenter, flyTo };
   }, [controlsRef, recenter, flyTo]);
+
+  // Auto-load nearby restaurants and cafes when user location is available
+  useEffect(() => {
+    if (!myLoc || places.length > 0) return; // Don't reload if already has places
+
+    const loadNearbyPlaces = async () => {
+      setIsLoadingPlaces(true);
+      const foundPlaces = await searchNearbyPlaces(
+        myLoc.lat,
+        myLoc.lng,
+        2000,
+        ['restaurant', 'cafe']
+      );
+      setPlaces(foundPlaces);
+      setIsLoadingPlaces(false);
+    };
+
+    loadNearbyPlaces();
+  }, [myLoc]);
 
   return (
     <div className="absolute inset-0 h-full w-full overflow-hidden bg-[oklch(0.93_0.03_230)]">
