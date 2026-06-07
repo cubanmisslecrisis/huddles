@@ -14,42 +14,15 @@ const DEFAULT_ZOOM = 14.5;
 const WARMTH_SOURCE_ID = 'activity-heat';
 const WARMTH_LAYER_ID = 'activity-heat-layer';
 
-// Scatter each heat cell into several sub-points so the Gaussian kernels overlap
-// irregularly — breaking the "perfect circle" look of a single point.
-// Offsets are fixed (not random) so the shape is stable across renders.
-// Distances are small (~10-20m) so the blob stays local to the cell.
-const SCATTER: Array<[number, number, number]> = [
-  // [distanceMeters, angleDeg, weightFraction]
-  [0,   0,   1.0],  // center — full weight
-  [12,  22,  0.65],
-  [17,  95,  0.55],
-  [14, 165,  0.60],
-  [18, 230,  0.50],
-  [11, 300,  0.65],
-  [20, 348,  0.45],
-];
-const METERS_PER_DEG_LAT = 111_320;
-
 function heatGeoJSON(heat: HeatPoint[]): GeoJSON.FeatureCollection {
-  const features: GeoJSON.Feature[] = [];
-  for (const h of heat) {
-    const mPerDegLng = METERS_PER_DEG_LAT * Math.cos((h.lat * Math.PI) / 180);
-    for (const [dist, angleDeg, wFrac] of SCATTER) {
-      const rad = (angleDeg * Math.PI) / 180;
-      features.push({
-        type: 'Feature',
-        properties: { weight: h.weight * wFrac },
-        geometry: {
-          type: 'Point',
-          coordinates: [
-            h.lng + (dist * Math.sin(rad)) / mPerDegLng,
-            h.lat + (dist * Math.cos(rad)) / METERS_PER_DEG_LAT,
-          ],
-        },
-      });
-    }
-  }
-  return { type: 'FeatureCollection', features };
+  return {
+    type: 'FeatureCollection',
+    features: heat.map((h) => ({
+      type: 'Feature',
+      properties: { weight: h.weight },
+      geometry: { type: 'Point', coordinates: [h.lng, h.lat] },
+    })),
+  };
 }
 
 // Raw mapbox-gl map with React-portal markers. The skeleton's light 3D `standard`
@@ -129,7 +102,8 @@ export function useMapboxMap({
     };
   }, []);
 
-  // Warmth heatmap: ensure source+layer, refresh data when `heat` changes, toggle opacity.
+  // Warmth heatmap: tiny radius so each kernel is microscopic; density naturally
+  // accumulates color where activity overlaps — that's how a heatmap works.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
@@ -142,46 +116,36 @@ export function useMapboxMap({
       } else {
         src.setData(data);
       }
-      // Natural heatmap paint — no animation, weight drives spread.
-      // Server weights range 0–16 (HEAT_PER_HEARTBEAT=2, HEAT_MAX=16, decays with factor 0.6).
-      const heatmapPaint: mapboxgl.HeatmapLayerSpecification['paint'] = {
-        // Map server weight (0–16) to heatmap point weight (0–1).
-        'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 0, 0, 4, 0.4, 8, 0.7, 16, 1],
-        // Intensity amplifies the kernel density — stronger at closer zoom.
-        'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 0.4, 13, 1.0, 15, 1.8, 17, 2.5],
-        // Classic thermal heatmap: blue → cyan → green → yellow → orange → red → magenta
-        'heatmap-color': [
-          'interpolate',
-          ['linear'],
-          ['heatmap-density'],
-          0,    'rgba(0,0,0,0)',
-          0.1,  'rgba(0,0,255,0.6)',
-          0.25, 'rgba(0,220,220,0.75)',
-          0.4,  'rgba(0,220,0,0.82)',
-          0.55, 'rgba(220,220,0,0.88)',
-          0.7,  'rgba(255,140,0,0.92)',
-          0.85, 'rgba(255,0,0,0.96)',
-          1,    'rgba(255,0,220,1)',
-        ],
-        // Radius scaled to ~cell size on screen. At zoom 14 one ~200m cell ≈ 27px.
-        'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 10, 8, 12, 16, 14, 30, 15, 55, 16, 100, 17, 180],
-        'heatmap-opacity': warmthEnabled ? 0.8 : 0,
-      };
-
       if (!map.getLayer(WARMTH_LAYER_ID)) {
         map.addLayer({
           id: WARMTH_LAYER_ID,
           type: 'heatmap',
           source: WARMTH_SOURCE_ID,
           slot: 'top',
-          paint: heatmapPaint,
+          paint: {
+            'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 0, 0, 0.5, 0.3, 1, 0.8, 2, 1],
+            'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 2, 12, 4, 14, 7, 16, 12, 17, 18],
+            'heatmap-color': [
+              'interpolate',
+              ['linear'],
+              ['heatmap-density'],
+              0,    'rgba(255, 255, 0, 0)',
+              0.08, 'rgba(255, 200, 0, 0.4)',
+              0.15, 'rgba(255, 140, 0, 0.6)',
+              0.25, 'rgba(255, 80, 20, 0.75)',
+              0.35, 'rgba(255, 40, 100, 0.85)',
+              0.5,  'rgba(200, 20, 200, 0.9)',
+              0.65, 'rgba(100, 50, 255, 0.92)',
+              0.8,  'rgba(0, 150, 255, 0.95)',
+              0.9,  'rgba(0, 255, 200, 0.97)',
+              1,    'rgba(0, 255, 150, 1)',
+            ],
+            'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 10, 3, 12, 5, 14, 8, 15, 12, 16, 20, 17, 35],
+            'heatmap-opacity': warmthEnabled ? 0.85 : 0,
+          },
         });
       } else {
-        map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-weight', heatmapPaint['heatmap-weight']);
-        map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-intensity', heatmapPaint['heatmap-intensity']);
-        map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-color', heatmapPaint['heatmap-color']);
-        map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-radius', heatmapPaint['heatmap-radius']);
-        map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-opacity', heatmapPaint['heatmap-opacity']);
+        map.setPaintProperty(WARMTH_LAYER_ID, 'heatmap-opacity', warmthEnabled ? 0.85 : 0);
       }
     };
 
